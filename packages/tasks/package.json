@@ -1,7 +1,7 @@
 {
   "name": "simplysm-tasks",
   "displayName": "Simplysm Tasks",
-  "version": "0.0.29",
+  "version": "1.0.0",
   "private": true,
   "license": "Apache-2.0",
   "keywords": ["tasks", "todo", "checklist", "memo", "notes"],

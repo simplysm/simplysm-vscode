@@ -1,3 +1,5 @@
+![Simplysm VS Code Extensions](.github/assets/banner.png)
+
 # simplysm-vscode
 
 [English](README.md) | [한국어](README.ko.md)

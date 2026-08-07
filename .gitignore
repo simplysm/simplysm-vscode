@@ -8,6 +8,7 @@ dist/
 .specs/
 
 # 시연 하네스 산출물 (playwright)
+.playwright-cli/
 demo/workspace/
 demo/results/
 playwright-report/

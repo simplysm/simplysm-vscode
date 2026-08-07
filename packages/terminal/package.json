@@ -1,7 +1,7 @@
 {
   "name": "simplysm-terminal",
   "displayName": "Simplysm Terminal",
-  "version": "0.0.11",
+  "version": "1.0.0",
   "private": true,
   "license": "Apache-2.0",
   "keywords": ["terminal", "split", "grid", "panel", "xterm", "shell"],
