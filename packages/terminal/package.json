@@ -5,6 +5,11 @@
   "private": true,
   "description": "%description%",
   "publisher": "simplysm",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/simplysm/simplysm-vscode.git",
+    "directory": "packages/terminal"
+  },
   "files": [
     "dist/**/*.cjs",
     "dist/node_modules/**",
