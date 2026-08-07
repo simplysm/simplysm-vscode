@@ -1,0 +1,481 @@
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+#terminal-root {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+#screens {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+/* pane 분할 — 가로는 좌우로, 세로는 위아래로 나눈다. */
+.split {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.split.horizontal {
+  flex-direction: row;
+}
+
+.split.vertical {
+  flex-direction: column;
+}
+
+/* 경계선은 1px 로 보이고, 잡는 자리는 4px — hover 로 잡을 수 있음을 알린다. */
+.divider {
+  position: relative;
+  flex: 0 0 4px;
+}
+
+.divider::before {
+  content: "";
+  position: absolute;
+  /* 내장 터미널 분할선과 같은 색 — terminal.border 의 등록 기본값은 panel.border 다. */
+  background: var(--vscode-terminal-border, var(--vscode-panel-border, transparent));
+}
+
+.split.horizontal > .divider::before {
+  top: 0;
+  bottom: 0;
+  left: 1.5px;
+  width: 1px;
+}
+
+.split.vertical > .divider::before {
+  left: 0;
+  right: 0;
+  top: 1.5px;
+  height: 1px;
+}
+
+.divider:hover,
+.divider:active {
+  background: var(--vscode-sash-hoverBorder, transparent);
+}
+
+.split.horizontal > .divider {
+  cursor: col-resize;
+}
+
+.split.vertical > .divider {
+  cursor: row-resize;
+}
+
+.pane {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tab-bar {
+  flex: 0 0 auto;
+  /* window.density.editorTabHeight 를 따른 값 — 확장 호스트가 설정에서 만들어 보낸다. */
+  height: var(--tab-height, 35px);
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  background: var(--vscode-editorGroupHeader-tabsBackground, transparent);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+/*
+ * 에디터 tab 과 같은 모양 — 높이는 tab-bar 를 채우고, X 는 hover·활성일 때만 보인다.
+ * 색은 pane 포커스에 따라 갈린다: 기본은 unfocused 계열, .pane.focused 에서 focused 계열.
+ * hover 색의 미정의는 "변화 없음" 이라 그 상태의 기존 색으로 되돌아가게 대체한다.
+ */
+.tab-label {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 16em;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 6px 0 10px;
+  border-right: 1px solid var(--vscode-tab-border, transparent);
+  background: var(--vscode-tab-inactiveBackground, transparent);
+  color: var(--vscode-tab-unfocusedInactiveForeground, inherit);
+  cursor: pointer;
+  user-select: none;
+}
+
+.pane.focused .tab-label {
+  color: var(--vscode-tab-inactiveForeground, inherit);
+}
+
+.tab-label:not(.active):hover {
+  background: var(
+    --vscode-tab-unfocusedHoverBackground,
+    var(--vscode-tab-inactiveBackground, transparent)
+  );
+  color: var(
+    --vscode-tab-unfocusedHoverForeground,
+    var(--vscode-tab-unfocusedInactiveForeground, inherit)
+  );
+}
+
+.pane.focused .tab-label:not(.active):hover {
+  background: var(--vscode-tab-hoverBackground, var(--vscode-tab-inactiveBackground, transparent));
+  color: var(--vscode-tab-hoverForeground, var(--vscode-tab-inactiveForeground, inherit));
+}
+
+/* 활성 표시는 상단(activeBorderTop)·하단(activeBorder) 두 색 — 테마가 정의한 쪽만 보인다. */
+.tab-label.active {
+  background: var(--vscode-tab-unfocusedActiveBackground, transparent);
+  color: var(--vscode-tab-unfocusedActiveForeground, inherit);
+  box-shadow:
+    inset 0 1px 0 var(--vscode-tab-unfocusedActiveBorderTop, transparent),
+    inset 0 -1px 0 var(--vscode-tab-unfocusedActiveBorder, transparent);
+}
+
+.pane.focused .tab-label.active {
+  background: var(--vscode-tab-activeBackground, transparent);
+  color: var(--vscode-tab-activeForeground, inherit);
+  box-shadow:
+    inset 0 1px 0 var(--vscode-tab-activeBorderTop, transparent),
+    inset 0 -1px 0 var(--vscode-tab-activeBorder, transparent);
+}
+
+.tab-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* X 와 + 는 같은 규격 — 기호 버튼이 제각각이면 그것만 눈에 띈다. compact 에도 들어간다. */
+.tab-close,
+.tab-add {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  max-height: 100%;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: inherit;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tab-close {
+  visibility: hidden;
+}
+
+.tab-label:hover .tab-close,
+.tab-label.active .tab-close {
+  visibility: visible;
+}
+
+.tab-close:hover,
+.tab-add:hover {
+  background: var(--vscode-toolbar-hoverBackground, transparent);
+}
+
+.tab-label.dragging {
+  opacity: 0.5;
+}
+
+.tab-add {
+  align-self: center;
+  margin-left: 4px;
+  color: var(--vscode-foreground);
+}
+
+.pane-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  /* 에뮬레이터가 칠하는 색과 같은 값 — 여백과 글자 격자 밖 자투리까지 한 면이 된다. */
+  background: var(--terminal-background, var(--vscode-panel-background));
+}
+
+/* 놓을 자리 미리 보기 — 가운데는 pane 전체, 네 방향은 그 절반을 덮는다. */
+.drop-preview {
+  position: absolute;
+  z-index: 5;
+  box-sizing: border-box;
+  border: 1px solid var(--vscode-focusBorder, transparent);
+  background: var(--vscode-editorGroup-dropBackground, var(--vscode-editor-selectionBackground));
+  pointer-events: none;
+}
+
+.drop-preview[hidden] {
+  display: none;
+}
+
+.drop-preview.center {
+  inset: 0;
+}
+
+.drop-preview.left {
+  inset: 0 50% 0 0;
+}
+
+.drop-preview.right {
+  inset: 0 0 0 50%;
+}
+
+.drop-preview.top {
+  inset: 0 0 50% 0;
+}
+
+.drop-preview.bottom {
+  inset: 50% 0 0 0;
+}
+
+/* tab 우클릭 메뉴와 이름 입력창 — pane 위에 떠서 배치를 다시 그려도 남는다. */
+.tab-menu,
+.tab-rename {
+  position: absolute;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border: 1px solid var(--vscode-menu-border, transparent);
+  border-radius: 5px;
+  background: var(--vscode-menu-background, var(--vscode-editorWidget-background));
+  color: var(--vscode-menu-foreground, var(--vscode-foreground));
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+.tab-menu-item {
+  height: 26px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  padding: 0 26px 0 10px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tab-menu-item:hover {
+  background: var(--vscode-menu-selectionBackground, transparent);
+  color: var(--vscode-menu-selectionForeground, inherit);
+}
+
+.tab-rename-input {
+  padding: 2px 4px;
+  border: 1px solid var(--vscode-input-border, transparent);
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  font: inherit;
+}
+
+.tab-rename-input:focus {
+  border-color: var(--vscode-focusBorder, transparent);
+  outline: none;
+}
+
+.tab {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tab[hidden] {
+  display: none;
+}
+
+.screen {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 8px 0;
+  box-sizing: border-box;
+}
+
+/* 시작 대기 tab — 세션이 붙기 전 그 자리에서 시작 폴더를 고른다. */
+.start {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 16px;
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+.start-title,
+.start-failure {
+  margin: 0 0 8px;
+}
+
+.start-failure {
+  color: var(--vscode-errorForeground);
+}
+
+.start-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  max-width: 42em;
+  padding: 4px 6px;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.start-option:hover,
+.start-option:focus {
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+  outline: none;
+}
+
+.start-path {
+  opacity: 0.75;
+  font-size: 0.9em;
+}
+
+.screen-surface {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.screen-exit {
+  flex: 0 0 auto;
+  padding: 4px 0;
+  color: var(--vscode-descriptionForeground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+/* 검색창 — 포커스 pane 의 오른쪽 위에 떠서 배치를 다시 그려도 남는다. */
+.search-bar {
+  position: absolute;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border: 1px solid var(--vscode-editorWidget-border, transparent);
+  border-radius: 4px;
+  background: var(--vscode-editorWidget-background);
+  color: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
+  box-shadow: 0 0 8px 2px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+.search-input {
+  width: 14em;
+  padding: 2px 4px;
+  border: 1px solid var(--vscode-input-border, transparent);
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  font: inherit;
+}
+
+.search-input:focus {
+  border-color: var(--vscode-focusBorder, transparent);
+  outline: none;
+}
+
+.search-result {
+  min-width: 4em;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+}
+
+.search-result.no-results {
+  color: var(--vscode-errorForeground);
+}
+
+.search-button {
+  padding: 2px 6px;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.search-button:hover {
+  background: var(--vscode-toolbar-hoverBackground, transparent);
+}
+
+/* 세션이 없는 상태의 전체 안내 (폴더 미개방, 호스트 기동 실패). */
+#notice {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  text-align: center;
+}
+
+#notice[hidden] {
+  display: none;
+}
+
+#notice p {
+  margin: 0;
+  max-width: 42em;
+}
+
+#notice-action {
+  padding: 4px 14px;
+  border: none;
+  border-radius: 2px;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+
+#notice-action:hover {
+  background: var(--vscode-button-hoverBackground);
+}

@@ -1,0 +1,5 @@
+{
+  "description": "A quick list editor for .tasks memo files — jot tasks down, delete them when done",
+  "editor.displayName": "Tasks List",
+  "command.new.title": "New Tasks File"
+}

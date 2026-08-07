@@ -1,0 +1,71 @@
+{
+  "name": "simplysm-tasks",
+  "displayName": "Simplysm Tasks",
+  "version": "0.0.29",
+  "private": true,
+  "description": "%description%",
+  "publisher": "simplysm",
+  "files": [
+    "dist/**/*.cjs",
+    "dist/webview/**/*.js",
+    "dist/webview/**/*.css",
+    "dist/webview/**/*.ttf",
+    "images/icon.png",
+    "l10n/*.json",
+    "package.nls.json",
+    "package.nls.ko.json"
+  ],
+  "type": "module",
+  "main": "./dist/extension.cjs",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test \"src/**/*.test.ts\""
+  },
+  "devDependencies": {
+    "@vscode/codicons": "^0.0.45"
+  },
+  "l10n": "./l10n",
+  "contributes": {
+    "languages": [
+      {
+        "id": "simplysm-tasks",
+        "aliases": [
+          "Simplysm Tasks"
+        ],
+        "extensions": [
+          ".tasks"
+        ]
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "simplysm-tasks.editor",
+        "displayName": "%editor.displayName%",
+        "selector": [
+          {
+            "filenamePattern": "*.tasks"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "commands": [
+      {
+        "command": "simplysm-tasks.new",
+        "title": "%command.new.title%",
+        "category": "Tasks"
+      }
+    ],
+    "menus": {
+      "file/newFile": [
+        {
+          "command": "simplysm-tasks.new"
+        }
+      ]
+    }
+  },
+  "icon": "images/icon.png",
+  "engines": {
+    "vscode": "^1.127.0"
+  }
+}

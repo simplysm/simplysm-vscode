@@ -1,0 +1,74 @@
+{
+  "name": "simplysm-local-history",
+  "displayName": "Simplysm Local History",
+  "version": "0.0.11",
+  "private": true,
+  "description": "%description%",
+  "publisher": "simplysm",
+  "files": [
+    "dist/**/*.cjs",
+    "images/icon.png",
+    "l10n/*.json",
+    "package.nls.json",
+    "package.nls.ko.json"
+  ],
+  "icon": "images/icon.png",
+  "l10n": "./l10n",
+  "type": "module",
+  "main": "./dist/extension.cjs",
+  "scripts": {
+    "build": "node scripts/build.mjs"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "simplysm-local-history.showHistory",
+        "title": "%command.showHistory.title%",
+        "category": "Simplysm Local History"
+      },
+      {
+        "command": "simplysm-local-history.rollback",
+        "title": "%command.rollback.title%",
+        "category": "Simplysm Local History",
+        "icon": "$(discard)"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "simplysm-local-history.showHistory",
+          "when": "resourceScheme == file",
+          "group": "7_localhistory"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "simplysm-local-history.rollback",
+          "when": "false"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "simplysm-local-history.rollback",
+          "when": "view == simplysm-local-history.view && (viewItem == snapshot || viewItem == entry)",
+          "group": "inline"
+        }
+      ]
+    },
+    "views": {
+      "explorer": [
+        {
+          "id": "simplysm-local-history.view",
+          "name": "%view.name%",
+          "when": "simplysm-local-history.active"
+        }
+      ]
+    }
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "engines": {
+    "vscode": "^1.127.0"
+  }
+}

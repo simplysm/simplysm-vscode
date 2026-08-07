@@ -1,0 +1,329 @@
+/* 리스트 UI (spec §4.2, §8 행 상시 편집 재설계) — VS Code 테마 변수 기반, 평면 리스트 */
+
+body {
+  margin: 0;
+  padding: 0.5em;
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+  font-weight: var(--vscode-editor-font-weight);
+}
+
+/* display 지정이 hidden 속성을 무효화하지 않게 */
+[hidden] {
+  display: none !important;
+}
+
+.task-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 항목 행 — 평면(카드 배경 없음), 구분은 간격·hover·포커스 (spec §4.7 위계, 사용자 확정) */
+.task-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35em;
+  padding: 0.3em 0.5em;
+  border-radius: 4px;
+}
+
+.task-item:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+/* 편집 중 행 — 배경은 hover 와 동일, 테두리로 편집 위치 식별 */
+.task-item:focus-within {
+  background: var(--vscode-list-hoverBackground);
+  outline: 1px solid var(--vscode-focusBorder);
+}
+
+/* 행 입력칸 — 배경에 녹아드는 투명 textarea */
+.task-input {
+  flex: 1;
+  /* flex 자식 최소폭 해제 — textarea 기본 최소폭이 좁은 패널에서 가로 스크롤을 만듦 */
+  min-width: 0;
+  box-sizing: border-box;
+  resize: none;
+  overflow: hidden;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  margin: 0;
+  min-height: 1.2em;
+}
+
+/* 고스트 새 행 (spec §4.3) — 평시 흐림, 포커스 시 강조. 드롭 대상(그 섹션 끝 삽입, spec §4.4) */
+.task-ghost {
+  display: flex;
+  padding: 0.3em 0.5em;
+  border-radius: 4px;
+  background: transparent;
+}
+
+.task-ghost:focus-within {
+  background: var(--vscode-input-background);
+  outline: 1px solid var(--vscode-focusBorder);
+}
+
+.task-input::placeholder {
+  color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground));
+}
+
+/* 드래그 재정렬·키보드 이동 (spec §4.4) */
+.task-handle {
+  color: var(--vscode-descriptionForeground);
+  cursor: grab;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  padding-top: 0.1em;
+}
+
+.task-item.dragging {
+  opacity: 0.5;
+}
+
+/* 드롭 위치 표시 — 3px 선·배경 하이라이트 (spec §4.4, 사용자 확정: 시인성 격상). 항목·그룹 공통 */
+.task-item.drop-before,
+.task-group.drop-before {
+  box-shadow: 0 -3px 0 0 var(--vscode-focusBorder);
+}
+
+.task-item.drop-after,
+.task-group.drop-after {
+  box-shadow: 0 3px 0 0 var(--vscode-focusBorder);
+}
+
+.task-ghost.drop-into,
+.group-header.drop-into {
+  background: var(--vscode-list-dropBackground, var(--vscode-list-hoverBackground));
+  outline: 1px solid var(--vscode-focusBorder);
+}
+
+/* 앞쪽 지우개 = 완료(삭제) (spec §4.3, 사용자 확정) */
+.task-erase {
+  border: none;
+  background: none;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  /* 파괴적 버튼 — 드래그 핸들에서 히트영역 분리해 오클릭 방지 (리뷰) */
+  padding: 0.1em 0.25em;
+  margin-left: 0.25em;
+  display: inline-flex;
+  align-items: center;
+}
+
+.task-erase:hover,
+.task-erase:focus-visible {
+  color: var(--vscode-errorForeground);
+}
+
+/* 커스텀 아이콘/버튼 포커스 링 (리뷰: 키보드 포커스 가시성) — 브라우저 기본 대신 테마색 */
+.task-erase:focus-visible,
+.group-toggle:focus-visible,
+.group-trash:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+/* 그룹 (spec §4.7) — 헤더 아래 소속 항목이 붙는 형태, 미분류 최상단 */
+.task-group {
+  margin-bottom: 0.5em;
+}
+
+/* 접힘 — DOM 보존, 표시만 끔 (spec §4.7: 입력 중 값 유지) */
+.task-group.collapsed .task-list {
+  display: none;
+}
+
+/* 그룹 삭제 hover — 지워질 블록 전체 하이라이트 (spec §4.7, 사용자 확정) */
+/* 배경은 errorForeground 를 옅게 깐 틴트 — inputValidation-errorBackground 는 짝 전경
+   토큰과 함께 써야 하는 색이라, 배경만 쓰면 그 값이 밝은 테마에서 글자가 묻힌다 */
+.task-group.delete-hover {
+  background: color-mix(in srgb, var(--vscode-errorForeground) 12%, transparent);
+  outline: 1px solid var(--vscode-errorForeground);
+  border-radius: 4px;
+}
+
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.35em 0.5em;
+  /* 배경 블록 대신 얇은 구분선 — 좁은 폭에서 밀도를 해치지 않으면서 블록 시작을 표시 */
+  /* 테마가 경계선 색을 안 주는 경우가 많아 중립 반투명으로 폴백 — 밝은·어두운 테마 모두에서 보임 */
+  border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, rgb(128 128 128 / 40%));
+  font-weight: bold;
+}
+
+.group-header.dragging {
+  opacity: 0.5;
+}
+
+.group-toggle {
+  border: none;
+  background: none;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* 접힘 시 소속 항목 수 배지 (spec §4.7, 사용자 확정) */
+.group-count {
+  color: var(--vscode-badge-foreground, var(--vscode-descriptionForeground));
+  background: var(--vscode-badge-background, var(--vscode-list-hoverBackground));
+  border-radius: 0.6em;
+  padding: 0 0.45em;
+  font-size: 0.85em;
+  font-weight: normal;
+  line-height: 1.4;
+}
+
+/* 그룹 삭제 — 상시 표시, 앞쪽 배치 (우측 정렬 요소 없음, 사용자 확정) */
+.group-trash {
+  border: none;
+  background: none;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+.group-trash:hover {
+  color: var(--vscode-errorForeground);
+}
+
+/* 그룹 이름 — 상시 편집 input, 헤더 배경에 녹아듦 (spec §4.7) */
+.group-name {
+  flex: 1;
+  /* flex 자식 최소폭 해제 — input 기본 최소폭이 좁은 패널에서 가로 스크롤을 만듦 */
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: bold;
+  padding: 0;
+  margin: 0;
+}
+
+.group-name:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+/* 미분류 라벨 — 그룹이 있을 때만, 비인터랙티브 (spec §4.7, 사용자 확정) */
+.group-label {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.85em;
+  padding: 0.2em 0.5em;
+  user-select: none;
+}
+
+/* 그룹 추가 입력칸 — 항목 고스트 행과 같은 방식(상시 입력, 평시 흐림) */
+.group-new {
+  box-sizing: border-box;
+  border: none;
+  outline: none;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: bold;
+  padding: 0.35em 0.5em;
+  display: block;
+  width: 100%;
+}
+
+.group-new:focus {
+  background: var(--vscode-input-background);
+  outline: 1px solid var(--vscode-focusBorder);
+}
+
+.group-new::placeholder {
+  color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground));
+}
+
+/* 그룹 소속 항목 들여쓰기 — 소속이 한눈에 보이게 */
+.task-group .group-header ~ .task-list {
+  margin-left: 1.25em;
+}
+
+/* 빈 상태 안내 (리뷰: 첫 진입 발견성) — 목록 위 저채도 힌트 */
+.empty-hint {
+  margin: 0.25em 0.5em 0.75em;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+  line-height: 1.5;
+}
+
+/* 삭제 Undo 토스트 (리뷰: 삭제 안전망 가시화) — 하단 중앙 인라인 배너 */
+.undo-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 1em;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.75em;
+  max-width: calc(100% - 2em);
+  padding: 0.5em 0.9em;
+  border-radius: 4px;
+  background: var(--vscode-notifications-background, var(--vscode-editorWidget-background));
+  color: var(--vscode-notifications-foreground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-notifications-border, var(--vscode-widget-border, transparent));
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgb(0 0 0 / 36%));
+  z-index: 10;
+}
+
+.undo-toast-action {
+  border: none;
+  background: none;
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.undo-toast-action:hover {
+  color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
+}
+
+.undo-toast-action:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+
+/* 파싱 오류 화면 (spec §4.2·§3.2) */
+.parse-error {
+  color: var(--vscode-errorForeground);
+}
+
+.open-as-text {
+  border: none;
+  border-radius: 4px;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.3em 0.9em;
+}
+
+.open-as-text:hover {
+  background: var(--vscode-button-hoverBackground, var(--vscode-button-background));
+}

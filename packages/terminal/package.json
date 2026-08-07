@@ -1,0 +1,166 @@
+{
+  "name": "simplysm-terminal",
+  "displayName": "Simplysm Terminal",
+  "version": "0.0.11",
+  "private": true,
+  "description": "%description%",
+  "publisher": "simplysm",
+  "files": [
+    "dist/**/*.cjs",
+    "dist/node_modules/**",
+    "dist/webview/**/*.js",
+    "dist/webview/**/*.css",
+    "dist/webview/**/*.ttf",
+    "images/icon.png",
+    "images/view-icon.svg",
+    "l10n/*.json",
+    "package.nls.json",
+    "package.nls.ko.json"
+  ],
+  "type": "module",
+  "main": "./dist/extension.cjs",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node scripts/build.mjs && node --test \"src/**/*.test.ts\""
+  },
+  "dependencies": {
+    "@lydell/node-pty": "1.2.0-beta.14"
+  },
+  "devDependencies": {
+    "@vscode/codicons": "^0.0.45",
+    "@xterm/addon-clipboard": "0.3.0-beta.292",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-search": "^0.16.0",
+    "@xterm/addon-serialize": "^0.14.0",
+    "@xterm/addon-web-links": "^0.12.0",
+    "@xterm/addon-webgl": "^0.19.0",
+    "@xterm/headless": "^6.0.0",
+    "@xterm/xterm": "^6.0.0"
+  },
+  "icon": "images/icon.png",
+  "l10n": "./l10n",
+  "contributes": {
+    "commands": [
+      {
+        "command": "simplysm-terminal.shieldShellKey",
+        "title": "%command.shieldShellKey.title%",
+        "category": "Simplysm Terminal"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "simplysm-terminal.shieldShellKey",
+          "when": "false"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "simplysm-terminal.shieldShellKey",
+        "key": "ctrl+a",
+        "when": "simplysm-terminal.viewFocused && simplysm-terminal.shellKey.ctrlA"
+      },
+      {
+        "command": "simplysm-terminal.shieldShellKey",
+        "key": "ctrl+b",
+        "when": "simplysm-terminal.viewFocused && simplysm-terminal.shellKey.ctrlB"
+      },
+      {
+        "command": "simplysm-terminal.shieldShellKey",
+        "key": "ctrl+e",
+        "when": "simplysm-terminal.viewFocused && simplysm-terminal.shellKey.ctrlE"
+      },
+      {
+        "command": "simplysm-terminal.shieldShellKey",
+        "key": "ctrl+g",
+        "when": "simplysm-terminal.viewFocused && simplysm-terminal.shellKey.ctrlG"
+      },
+      {
+        "command": "simplysm-terminal.shieldShellKey",
+        "key": "ctrl+h",
+        "when": "simplysm-terminal.viewFocused && simplysm-terminal.shellKey.ctrlH"
+      },
+      {
+        "command": "simplysm-terminal.shieldShellKey",
+        "key": "ctrl+j",
+        "when": "simplysm-terminal.viewFocused && simplysm-terminal.shellKey.ctrlJ"
+      },
+      {
+        "command": "simplysm-terminal.shieldShellKey",
+        "key": "ctrl+k",
+        "when": "simplysm-terminal.viewFocused && simplysm-terminal.shellKey.ctrlK"
+      },
+      {
+        "command": "simplysm-terminal.shieldShellKey",
+        "key": "ctrl+n",
+        "when": "simplysm-terminal.viewFocused && simplysm-terminal.shellKey.ctrlN"
+      },
+      {
+        "command": "simplysm-terminal.shieldShellKey",
+        "key": "ctrl+o",
+        "when": "simplysm-terminal.viewFocused && simplysm-terminal.shellKey.ctrlO"
+      },
+      {
+        "command": "simplysm-terminal.shieldShellKey",
+        "key": "ctrl+p",
+        "when": "simplysm-terminal.viewFocused && simplysm-terminal.shellKey.ctrlP"
+      },
+      {
+        "command": "simplysm-terminal.shieldShellKey",
+        "key": "ctrl+r",
+        "when": "simplysm-terminal.viewFocused && simplysm-terminal.shellKey.ctrlR"
+      },
+      {
+        "command": "simplysm-terminal.shieldShellKey",
+        "key": "ctrl+t",
+        "when": "simplysm-terminal.viewFocused && simplysm-terminal.shellKey.ctrlT"
+      },
+      {
+        "command": "simplysm-terminal.shieldShellKey",
+        "key": "ctrl+u",
+        "when": "simplysm-terminal.viewFocused && simplysm-terminal.shellKey.ctrlU"
+      },
+      {
+        "command": "simplysm-terminal.shieldShellKey",
+        "key": "ctrl+w",
+        "when": "simplysm-terminal.viewFocused && simplysm-terminal.shellKey.ctrlW"
+      },
+      {
+        "command": "simplysm-terminal.shieldShellKey",
+        "key": "ctrl+y",
+        "when": "simplysm-terminal.viewFocused && simplysm-terminal.shellKey.ctrlY"
+      }
+    ],
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "simplysm-terminal",
+          "title": "%viewsContainer.title%",
+          "icon": "images/view-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "simplysm-terminal": [
+        {
+          "id": "simplysm-terminal.view",
+          "name": "%view.name%",
+          "type": "webview"
+        }
+      ]
+    }
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "engines": {
+    "vscode": "^1.127.0"
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "%capabilities.untrustedWorkspaces.description%"
+    }
+  }
+}

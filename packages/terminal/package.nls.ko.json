@@ -1,0 +1,7 @@
+{
+  "description": "4방향으로 나누는 패널 터미널 — 세션을 격자로 놓고 탭을 원하는 자리로 끌어 옮깁니다",
+  "capabilities.untrustedWorkspaces.description": "연 폴더에서 셸 세션을 시작하므로 신뢰된 워크스페이스가 필요합니다.",
+  "viewsContainer.title": "Simplysm 터미널",
+  "view.name": "Simplysm 터미널",
+  "command.shieldShellKey.title": "키를 셸에 남겨 두기 (내부용)"
+}

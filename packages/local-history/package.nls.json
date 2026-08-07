@@ -1,0 +1,6 @@
+{
+  "description": "Records local file history and restores files or folders to a past state — like WebStorm's Local History",
+  "command.showHistory.title": "Show History",
+  "command.rollback.title": "Rollback to This State",
+  "view.name": "Local History"
+}

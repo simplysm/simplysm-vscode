@@ -1,0 +1,9 @@
+{
+  "\"{0}\" has changed on disk.": "\"{0}\" 파일이 디스크에서 변경되었습니다.",
+  "The editor contains unsaved changes. Reloading from disk will discard them.": "에디터에 저장하지 않은 변경이 있습니다. 디스크에서 다시 불러오면 사라집니다.",
+  "Reload from Disk": "디스크에서 다시 불러오기",
+  "Keep Editor Version": "에디터 버전 유지",
+  "Show Diff": "차이 보기",
+  "{0} (On Disk ↔ In Editor)": "{0} (디스크 ↔ 에디터)",
+  "Focus Refresh failed to sync files: {0}": "Focus Refresh 파일 동기화 실패: {0}"
+}

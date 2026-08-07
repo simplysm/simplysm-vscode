@@ -1,0 +1,14 @@
+packages:
+  - "packages/*"
+allowBuilds:
+  "@vscode/vsce-sign": false
+  esbuild: true
+  keytar: false
+minimumReleaseAge: 0
+# vsix 에 win32 + linux 의 node-pty prebuilt 를 함께 동봉하기 위해 두 OS 의 패키지를 모두 받는다.
+supportedArchitectures:
+  os:
+    - win32
+    - linux
+  cpu:
+    - x64

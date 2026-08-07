@@ -1,0 +1,28 @@
+{
+  "name": "simplysm-vscode",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint",
+    "test": "pnpm -r test",
+    "demo": "pnpm build && playwright test",
+    "format": "oxfmt .",
+    "reset": "node scripts/clean.mjs && pnpm install",
+    "deploy:local": "node scripts/deploy-local.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@types/node": "^24.13.3",
+    "@types/vscode": "^1.125.0",
+    "@vscode/test-electron": "^3.0.0",
+    "@vscode/vsce": "^3.9.2",
+    "esbuild": "^0.28.1",
+    "oxfmt": "^0.58.0",
+    "oxlint": "^1.74.0",
+    "typescript": "^7.0.2"
+  },
+  "packageManager": "pnpm@11.10.0"
+}

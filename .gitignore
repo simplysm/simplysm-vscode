@@ -1,0 +1,16 @@
+node_modules/
+dist/
+
+# 내부 개발 문서·메모 (로컬 전용)
+.back/
+.tasks
+.plans/
+.specs/
+
+# 시연 하네스 산출물 (playwright)
+demo/workspace/
+demo/results/
+playwright-report/
+test-results/
+.vscode-test/
+.local-vsix/

@@ -1,0 +1,7 @@
+{
+  "description": "A panel terminal you can split four ways — arrange sessions in a grid and drag tabs where you want them",
+  "capabilities.untrustedWorkspaces.description": "This extension starts shell sessions in the folders you open, so it needs a trusted workspace.",
+  "viewsContainer.title": "Simplysm Terminal",
+  "view.name": "Simplysm Terminal",
+  "command.shieldShellKey.title": "Keep the key for the shell (internal)"
+}
