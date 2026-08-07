@@ -10,6 +10,10 @@ export function sleep(ms: number): Promise<void> {
 
 export async function installCursor(workbox: Page): Promise<void> {
   await workbox.evaluate(() => {
+    // 워크벤치 호버 툴팁 숨김 — 실제 OS 커서가 창 위에 걸쳐 있으면 툴팁이 프레임에 남는다
+    const style = document.createElement("style");
+    style.textContent = ".monaco-hover { display: none !important; }";
+    document.head.appendChild(style);
     const cursor = document.createElement("div");
     cursor.id = "demo-cursor";
     cursor.style.cssText =
@@ -79,41 +83,85 @@ export async function clickWithCursor(workbox: Page, target: Locator): Promise<v
   await target.click({ timeout: 5_000 });
 }
 
-/** source 중심을 잡아 지정 지점으로 드래그 — 커서 오버레이 동반. */
+/**
+ * source 중심을 잡아 지정 지점으로 드래그 — 커서 오버레이 동반.
+ * 실제 드래그는 down → 연속 move → up 을 끊김 없이 보낸다 (중간에 evaluate 를 끼우면
+ * HTML5 드래그 스트림이 깨져 드롭이 무시되는 현상 관찰됨). 오버레이는 CSS transition 으로
+ * 페이지 스스로 움직여 프레임에 이동 경로가 남는다.
+ */
 export async function dragWithCursor(
   workbox: Page,
   source: Locator,
   dropPoint: { x: number; y: number },
 ): Promise<void> {
   await glideTo(workbox, source);
-  await sleep(200);
+  await sleep(150);
+  const durationMs = 500;
+  await workbox.evaluate(
+    ([x, y, ms]) => {
+      const cursor = document.getElementById("demo-cursor")!;
+      cursor.style.transition = `left ${ms}ms linear, top ${ms}ms linear`;
+      void cursor.offsetWidth; // 리플로우 — transition 적용 보장
+      cursor.style.left = `${x}px`;
+      cursor.style.top = `${y}px`;
+    },
+    [dropPoint.x, dropPoint.y, durationMs],
+  );
   await workbox.mouse.down();
-  await sleep(200);
-  await moveWithCursor(workbox, dropPoint, 18);
+  // 이동을 천천히 쪼갠다 — 프레임에 드래그 중간 상태(드롭 미리보기)가 남게.
+  // 이동 중 evaluate 는 금지(오버레이는 CSS transition 으로 스스로 움직인다).
+  const from = { ...lastCursorPos };
+  const steps = 12;
+  for (let step = 1; step <= steps; step++) {
+    await workbox.mouse.move(
+      from.x + ((dropPoint.x - from.x) * step) / steps,
+      from.y + ((dropPoint.y - from.y) * step) / steps,
+    );
+    await sleep(durationMs / steps);
+  }
+  await workbox.mouse.move(dropPoint.x, dropPoint.y);
   await sleep(250);
   await workbox.mouse.up();
+  await workbox.evaluate(() => {
+    document.getElementById("demo-cursor")!.style.transition = "";
+  });
+  lastCursorPos = dropPoint;
 }
 
-/** 주기 스크린샷 녹화 — 프레임 파일명 = 캡처 시각(ms). 합성 스크립트가 실제 간격을 duration 으로 쓴다. */
-export function startRecorder(
+/**
+ * 화면 녹화 — CDP screencast(푸시형). 요청형 스크린샷(Page.captureScreenshot)을 주기 호출하면
+ * HTML5 드래그의 드롭이 유실되는 간섭이 확인돼 푸시형을 쓴다. 프레임 파일명 = 수신 시각(ms) —
+ * 합성 스크립트가 실제 간격을 duration 으로 쓴다. 프레임은 창 전체라 clip 은 clip.json 으로
+ * 넘겨 합성 시 잘라낸다.
+ */
+export async function startRecorder(
   workbox: Page,
   clip: { x: number; y: number; width: number; height: number },
   framesDir: string,
-): { stop(): Promise<void> } {
+): Promise<{ stop(): Promise<void> }> {
   fs.mkdirSync(framesDir, { recursive: true });
-  let active = true;
-  const loop = (async () => {
-    while (active) {
-      const startedAt = Date.now();
-      await workbox.screenshot({ clip, path: path.join(framesDir, `${startedAt}.png`) });
-      const elapsed = Date.now() - startedAt;
-      if (elapsed < 100) await sleep(100 - elapsed);
-    }
-  })();
+  const viewportWidth = await workbox.evaluate(() => window.innerWidth);
+  fs.writeFileSync(path.join(framesDir, "clip.json"), JSON.stringify({ ...clip, viewportWidth }));
+
+  const client = await workbox.context().newCDPSession(workbox);
+  const pending: Promise<unknown>[] = [];
+  client.on("Page.screencastFrame", (frameEvent: { data: string; sessionId: number }) => {
+    fs.writeFileSync(
+      path.join(framesDir, `${Date.now()}.png`),
+      Buffer.from(frameEvent.data, "base64"),
+    );
+    pending.push(
+      client
+        .send("Page.screencastFrameAck", { sessionId: frameEvent.sessionId })
+        .catch(() => undefined),
+    );
+  });
+  await client.send("Page.startScreencast", { format: "png", everyNthFrame: 2 });
   return {
     stop: async () => {
-      active = false;
-      await loop;
+      await client.send("Page.stopScreencast").catch(() => undefined);
+      await Promise.all(pending);
+      await client.detach().catch(() => undefined);
     },
   };
 }

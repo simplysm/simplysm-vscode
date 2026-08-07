@@ -63,7 +63,7 @@ async function setupScene(
 test("GIF ① 입력·완료 — 연속 입력, 지우개 삭제, undo 복원", async ({ workbox }) => {
   const { frame, clip } = await setupScene(workbox, "");
   const framesDir = path.join(runResultsDir, "readme-media", "quick-entry");
-  const recorder = startRecorder(workbox, clip, framesDir);
+  const recorder = await startRecorder(workbox, clip, framesDir);
   try {
     // 연속 입력 — 고스트 행 클릭 후 Enter 로 이어서 추가
     const ghost = frame.locator(".task-ghost .task-input").first();
@@ -116,7 +116,7 @@ test("GIF ② 정렬·그룹 — 항목 드래그, 그룹으로 이동, 그룹 �
       '{"text":"Dark mode"}\n',
   );
   const framesDir = path.join(runResultsDir, "readme-media", "ordering-groups");
-  const recorder = startRecorder(workbox, clip, framesDir);
+  const recorder = await startRecorder(workbox, clip, framesDir);
   try {
     const ungrouped = frame.locator(".task-group").first();
     await sleep(700);
