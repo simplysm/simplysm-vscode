@@ -4,6 +4,7 @@
   "version": "0.0.11",
   "private": true,
   "license": "Apache-2.0",
+  "keywords": ["terminal", "split", "grid", "panel", "xterm", "shell"],
   "description": "%description%",
   "publisher": "simplysm",
   "repository": {

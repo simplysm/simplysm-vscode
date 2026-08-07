@@ -4,6 +4,7 @@
   "version": "0.0.11",
   "private": true,
   "license": "Apache-2.0",
+  "keywords": ["local history", "history", "backup", "restore", "snapshot", "rollback", "webstorm"],
   "description": "%description%",
   "publisher": "simplysm",
   "repository": {
@@ -14,6 +15,7 @@
   "files": [
     "dist/**/*.cjs",
     "images/icon.png",
+    "images/show-history.png",
     "l10n/*.json",
     "package.nls.json",
     "package.nls.ko.json"
