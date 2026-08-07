@@ -1,4 +1,4 @@
-![Simplysm VS Code Extensions](.github/assets/banner.png)
+![Simplysm VS Code Extensions](.github/assets/banner-readme.png)
 
 # simplysm-vscode
 
