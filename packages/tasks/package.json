@@ -16,6 +16,7 @@
     "dist/webview/**/*.css",
     "dist/webview/**/*.ttf",
     "images/icon.png",
+    "images/*.gif",
     "l10n/*.json",
     "package.nls.json",
     "package.nls.ko.json"
@@ -59,6 +60,28 @@
         "command": "simplysm-tasks.new",
         "title": "%command.new.title%",
         "category": "Tasks"
+      }
+    ],
+    "keybindings": [
+      {
+        "key": "ctrl+z",
+        "mac": "cmd+z",
+        "command": "simplysm-tasks.historyKey",
+        "args": { "action": "undo" },
+        "when": "activeCustomEditorId == 'simplysm-tasks.editor' && !inputFocus"
+      },
+      {
+        "key": "ctrl+shift+z",
+        "mac": "cmd+shift+z",
+        "command": "simplysm-tasks.historyKey",
+        "args": { "action": "redo" },
+        "when": "activeCustomEditorId == 'simplysm-tasks.editor' && !inputFocus"
+      },
+      {
+        "key": "ctrl+y",
+        "command": "simplysm-tasks.historyKey",
+        "args": { "action": "redo" },
+        "when": "activeCustomEditorId == 'simplysm-tasks.editor' && !inputFocus"
       }
     ],
     "menus": {

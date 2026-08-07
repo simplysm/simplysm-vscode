@@ -28,6 +28,9 @@ function editorLineHeightCss(): string {
   return `${lineHeight}px`;
 }
 
+/** 활성 tasks 에디터 패널 — historyKey 키바인딩 명령의 전달 대상 (spec §4.5). */
+let activeTasksPanel: vscode.WebviewPanel | undefined;
+
 class TasksEditorProvider implements vscode.CustomTextEditorProvider {
   private readonly context: vscode.ExtensionContext;
 
@@ -38,6 +41,13 @@ class TasksEditorProvider implements vscode.CustomTextEditorProvider {
   resolveCustomTextEditor(document: vscode.TextDocument, webviewPanel: vscode.WebviewPanel): void {
     webviewPanel.webview.options = { enableScripts: true };
     webviewPanel.webview.html = buildWebviewHtml(webviewPanel.webview, this.context.extensionUri);
+
+    // 활성 패널 추적 — 키바인딩(when: activeCustomEditorId)이 눌린 순간의 대상 패널 식별
+    if (webviewPanel.active) activeTasksPanel = webviewPanel;
+    const viewStateSubscription = webviewPanel.onDidChangeViewState(() => {
+      if (webviewPanel.active) activeTasksPanel = webviewPanel;
+      else if (activeTasksPanel === webviewPanel) activeTasksPanel = undefined;
+    });
 
     const pushDocument = (): void => {
       void webviewPanel.webview.postMessage({ type: "doc", text: document.getText() });
@@ -192,6 +202,8 @@ class TasksEditorProvider implements vscode.CustomTextEditorProvider {
     });
 
     webviewPanel.onDidDispose(() => {
+      if (activeTasksPanel === webviewPanel) activeTasksPanel = undefined;
+      viewStateSubscription.dispose();
       messageSubscription.dispose();
       changeSubscription.dispose();
       configSubscription.dispose();
@@ -248,6 +260,14 @@ export function activate(context: vscode.ExtensionContext): void {
       new TasksEditorProvider(context),
     ),
     vscode.commands.registerCommand("simplysm-tasks.new", () => newTasksFile()),
+    // Ctrl+Z/Y 키바인딩 위임 (spec §4.5) — VS Code 가 webview 안 키를 선점하므로 키바인딩으로
+    // 소유권을 가져와 webview 에 전달, webview 가 dirty 필드/문서 이력을 분기 (handleHistoryKey).
+    vscode.commands.registerCommand(
+      "simplysm-tasks.historyKey",
+      (args: { action: "undo" | "redo" }) => {
+        void activeTasksPanel?.webview.postMessage({ type: "historyKey", action: args.action });
+      },
+    ),
   );
 }
 

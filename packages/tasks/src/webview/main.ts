@@ -15,7 +15,10 @@ import {
 import * as listOps from "../list-ops.ts";
 import { setL10nBundle, t } from "../l10n.ts";
 
-type HostMessage = { type: "doc"; text: string } | { type: "config"; lineHeight: string };
+type HostMessage =
+  | { type: "doc"; text: string }
+  | { type: "config"; lineHeight: string }
+  | { type: "historyKey"; action: "undo" | "redo" };
 
 declare function acquireVsCodeApi(): {
   postMessage(message: unknown): void;
@@ -298,13 +301,24 @@ function moveGroupBy(header: GroupHeader, delta: -1 | 1): void {
   moveGroupBlock(header, target, delta === -1);
 }
 
-/** pristine 입력칸의 Ctrl+Z/Y = 문서 undo/redo 위임 (spec §4.5, 사용자 확정). */
-function historyKeyAction(event: KeyboardEvent): "undo" | "redo" | null {
-  if (!event.ctrlKey || event.altKey || event.metaKey) return null;
-  const key = event.key.toLowerCase();
-  if (key === "z" && !event.shiftKey) return "undo";
-  if ((key === "z" && event.shiftKey) || (key === "y" && !event.shiftKey)) return "redo";
-  return null;
+/** 필드별 pristine 판정 레지스트리 — handleHistoryKey 가 활성 필드의 미수정 여부를 묻는다. */
+const pristineCheckers = new WeakMap<HTMLElement, () => boolean>();
+
+/**
+ * 키바인딩이 호스트를 거쳐 위임한 undo/redo (spec §4.5) — VS Code 가 webview 안 Ctrl+Z/Y 를
+ * 선점(기본동작 차단 + 워크벤치 undo 실행)하므로 webview keydown 처리로는 성립 불가.
+ * package.json 키바인딩 → historyKey 명령 → 이 분기가 유일한 진입로:
+ * 수정 중(dirty) 필드 = 필드 텍스트 undo/redo, 그 외(pristine·필드 밖) = 문서 이력 1단계.
+ */
+function handleHistoryKey(action: "undo" | "redo"): void {
+  const active = document.activeElement;
+  const checker = active instanceof HTMLElement ? pristineCheckers.get(active) : undefined;
+  if (checker != null && !checker()) {
+    // execCommand 는 deprecated 지만 필드 네이티브 undo 스택을 쓰는 유일한 수단 (대체 API 부재)
+    document.execCommand(action);
+    return;
+  }
+  vscodeApi.postMessage({ type: "history", action });
 }
 
 function wireRowKeys(row: Row): void {
@@ -353,12 +367,7 @@ function wireRowKeys(row: Row): void {
       if (confirmed != null && row.kind === "item") moveLineBy(confirmed, delta);
       return;
     }
-    // pristine 칸의 Ctrl+Z/Y = 문서 undo/redo (spec §4.5)
-    const action = historyKeyAction(event);
-    if (action != null && isPristine(row)) {
-      event.preventDefault();
-      vscodeApi.postMessage({ type: "history", action });
-    }
+    // Ctrl+Z/Y 는 여기 안 온다 — VS Code 선점 + 키바인딩 위임 (handleHistoryKey 참조)
   });
 }
 
@@ -437,6 +446,9 @@ function createRow(kind: Row["kind"]): Row {
     rootEl: rootLi,
     textarea,
   };
+
+  // Ctrl+Z/Y 분기용 pristine 판정 (handleHistoryKey)
+  pristineCheckers.set(textarea, () => isPristine(row));
 
   textarea.title = t("Enter to save, Shift+Enter for new line");
   // 임시 행(draft)도 항목 행과 같은 DOM — Enter 확정 시 kind 만 item 으로 바뀌므로,
@@ -672,12 +684,12 @@ function createSection(header: GroupHeader | null): Section {
         if (section.header != null) moveGroupBy(section.header, delta);
         return;
       }
-      const action = historyKeyAction(event);
-      if (action != null && section.header != null && nameInput.value === section.header.group) {
-        event.preventDefault();
-        vscodeApi.postMessage({ type: "history", action });
-      }
     });
+    // Ctrl+Z/Y 분기용 pristine 판정 (handleHistoryKey) — 저장된 그룹명과 같으면 미수정
+    pristineCheckers.set(
+      nameInput,
+      () => section.header == null || nameInput.value === section.header.group,
+    );
     onEditableBlur(nameInput, () => {
       confirmGroupName(section);
     });
@@ -811,6 +823,8 @@ addGroupInput.addEventListener("keydown", (event) => {
   }
 });
 onEditableBlur(addGroupInput, confirmAddGroup);
+// Ctrl+Z/Y 분기용 pristine 판정 (handleHistoryKey) — 비어 있으면 미수정
+pristineCheckers.set(addGroupInput, () => addGroupInput.value === "");
 
 // ---------------------------------------------------------------------------
 // 렌더 — 행 단위 재조정 (spec §8): 노드 재사용, 순서만 동기화, 포커스 노드 보존
@@ -1021,6 +1035,10 @@ window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
     document.body.style.lineHeight = event.data.lineHeight;
     return;
   }
+  if (event.data.type === "historyKey") {
+    handleHistoryKey(event.data.action);
+    return;
+  }
   if (event.data.type !== "doc") return;
   const result = parseTasksFile(event.data.text);
   if (!result.ok) {
@@ -1041,16 +1059,6 @@ window.addEventListener("resize", () => {
   for (const textarea of rootEl.querySelectorAll("textarea")) {
     resizeTextarea(textarea);
   }
-});
-
-// 입력칸 밖 포커스의 undo/redo 키 (spec §4.5) — VS Code 키바인딩이 안 뜨므로 직접 위임.
-window.addEventListener("keydown", (event) => {
-  const target = event.target;
-  if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) return;
-  const action = historyKeyAction(event);
-  if (action == null) return;
-  event.preventDefault();
-  vscodeApi.postMessage({ type: "history", action });
 });
 
 vscodeApi.postMessage({ type: "ready" });
