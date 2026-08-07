@@ -17,6 +17,7 @@
     "dist/webview/**/*.css",
     "dist/webview/**/*.ttf",
     "images/icon.png",
+    "images/*.gif",
     "images/view-icon.svg",
     "l10n/*.json",
     "package.nls.json",
