@@ -12,7 +12,8 @@
     "demo": "pnpm build && playwright test",
     "format": "oxfmt .",
     "reset": "node scripts/clean.mjs && pnpm install",
-    "deploy:local": "node scripts/deploy-local.mjs"
+    "deploy:local": "node scripts/deploy-local.mjs",
+    "publish:marketplace": "node scripts/publish.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",

@@ -13,6 +13,7 @@
     "directory": "packages/terminal"
   },
   "files": [
+    "LICENSE",
     "dist/**/*.cjs",
     "dist/node_modules/**",
     "dist/webview/**/*.js",

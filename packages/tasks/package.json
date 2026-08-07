@@ -13,6 +13,7 @@
     "directory": "packages/tasks"
   },
   "files": [
+    "LICENSE",
     "dist/**/*.cjs",
     "dist/webview/**/*.js",
     "dist/webview/**/*.css",

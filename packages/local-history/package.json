@@ -13,6 +13,7 @@
     "directory": "packages/local-history"
   },
   "files": [
+    "LICENSE",
     "dist/**/*.cjs",
     "images/icon.png",
     "images/show-history.png",

@@ -1,6 +1,9 @@
 node_modules/
 dist/
 
+# 배포 토큰 (로컬 전용)
+.env
+
 # 내부 개발 문서·메모 (로컬 전용)
 .back/
 .tasks

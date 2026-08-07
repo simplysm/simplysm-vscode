@@ -13,6 +13,7 @@
     "directory": "packages/focus-refresh"
   },
   "files": [
+    "LICENSE",
     "dist/**/*.cjs",
     "images/icon.png",
     "l10n/*.json",
