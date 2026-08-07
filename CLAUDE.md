@@ -4,6 +4,7 @@ VS Code 확장 모노레포. spec 은 `.specs/<주제>.md` — 주제별 전제�
 
 - 확장 패키지(`packages/*`) 추가·삭제 시 `.vscode/launch.json` 의 `--extensionDevelopmentPath` 목록도 함께 갱신 — F5 가 모든 확장을 로드해야 함.
 - `.back`폴더 및 `.gitignore`에 포함된 폴더는 사용자가 정확한 경로로 요청하기전엔 읽기/쓰기 금지.
+- 커밋 subject 는 영어로, 확장 사용자 관점에서 서술 — `publish:marketplace` 가 subject 를 그대로 CHANGELOG(마켓플레이스 노출)에 옮긴다.
 
 ## 검증·시연 (에이전트 직접 수행)
 
