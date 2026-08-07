@@ -175,7 +175,11 @@ try {
       "package",
       "--no-dependencies",
       "--skip-license",
-      "--allow-missing-repository",
+      // monorepo — vsce 는 README 상대경로를 repo 루트 기준으로 재작성하므로 패키지 폴더 기준 URL 지정
+      "--baseContentUrl",
+      `https://github.com/simplysm/simplysm-vscode/raw/HEAD/packages/${item.dirName}/`,
+      "--baseImagesUrl",
+      `https://github.com/simplysm/simplysm-vscode/raw/HEAD/packages/${item.dirName}/`,
       "--out",
       vsixPath,
     ]);
