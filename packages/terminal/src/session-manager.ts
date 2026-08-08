@@ -32,6 +32,11 @@ const terminalTypeName = "xterm-256color";
 const initialRows = 24;
 const initialCols = 80;
 
+// pty 는 출력을 잘게 쪼개 준다. 청크마다 IPC·postMessage 를 태우면 대량 출력에서 메시지가
+// 폭주하므로, 짧게 모았다가 한 덩어리로 보낸다. 지연은 1프레임(16ms) 미만이라 체감되지 않는다.
+const outputFlushDelayMs = 5;
+const outputFlushBytes = 64 * 1024;
+
 interface Session {
   readonly sessionId: string;
   readonly shellPath: string;
@@ -42,6 +47,10 @@ interface Session {
   readonly screen: Terminal;
   readonly serializer: SerializeAddon;
   exitedCause?: SessionEndCause;
+  /** 아직 내보내지 않은 출력 조각들 — 시간·크기 임계에 이르면 한 덩어리로 내보낸다. */
+  pendingOutput: Buffer[];
+  pendingBytes: number;
+  flushTimer?: NodeJS.Timeout;
 }
 
 export interface SessionManagerCallbacks {
@@ -106,8 +115,36 @@ export class SessionManager {
     return result;
   }
 
+  /** 모아둔 출력을 지금 내보낸다. 직렬화·종료 전에 불러 중복·유실 없이 순서를 맞춘다. */
+  #flushOutput(session: Session): void {
+    if (session.flushTimer != null) {
+      clearTimeout(session.flushTimer);
+      session.flushTimer = undefined;
+    }
+    if (session.pendingOutput.length === 0) return;
+    const merged =
+      session.pendingOutput.length === 1
+        ? session.pendingOutput[0]!
+        : Buffer.concat(session.pendingOutput);
+    session.pendingOutput = [];
+    session.pendingBytes = 0;
+    this.#callbacks.onOutput(session.sessionId, new Uint8Array(merged));
+  }
+
+  #queueOutput(session: Session, bytes: Buffer): void {
+    session.pendingOutput.push(bytes);
+    session.pendingBytes += bytes.length;
+    if (session.pendingBytes >= outputFlushBytes) {
+      this.#flushOutput(session);
+      return;
+    }
+    session.flushTimer ??= setTimeout(() => this.#flushOutput(session), outputFlushDelayMs);
+  }
+
   /** 화면 에뮬레이터의 write 는 비동기다 — 큐가 다 그려진 다음에야 직렬화가 실제 화면이 된다. */
   async #flushScreens(): Promise<void> {
+    // 모아둔 출력을 먼저 내보내야 직렬화 결과와 이후 출력이 겹치지 않는다.
+    for (const session of this.#sessions.values()) this.#flushOutput(session);
     await Promise.all(
       [...this.#sessions.values()].map(
         (session) => new Promise<void>((resolve) => session.screen.write("", resolve)),
@@ -146,6 +183,8 @@ export class SessionManager {
         screen,
         serializer,
         exitedCause: { kind: "restoreFailed" },
+        pendingOutput: [],
+        pendingBytes: 0,
       };
       this.#sessions.set(session.sessionId, session);
       this.#changeLayout((tree) => attachSession(tree, tabId, session.sessionId));
@@ -221,12 +260,14 @@ export class SessionManager {
       shell,
       screen,
       serializer,
+      pendingOutput: [],
+      pendingBytes: 0,
     };
     this.#sessions.set(session.sessionId, session);
     shell.onData((chunk: string | Buffer) => {
       const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, "utf8");
       screen.write(new Uint8Array(bytes));
-      this.#callbacks.onOutput(session.sessionId, new Uint8Array(bytes));
+      this.#queueOutput(session, bytes);
     });
     shell.onExit(({ exitCode, signal }) => this.#handleExit(session, exitCode, signal));
 
@@ -239,6 +280,7 @@ export class SessionManager {
     if (session != null) this.#sessions.delete(session.sessionId);
     this.#changeLayout((tree) => removeTab(tree, tabId));
     if (session != null) {
+      if (session.flushTimer != null) clearTimeout(session.flushTimer);
       if (session.exitedCause == null) session.shell?.kill();
       session.screen.dispose();
     }
@@ -278,6 +320,7 @@ export class SessionManager {
   /** daemon 이 끝난다. 남은 셸을 모두 끝낸다 — 남기면 창이 닫힌 뒤에도 프로세스가 산다. */
   dispose(): void {
     for (const session of this.#sessions.values()) {
+      if (session.flushTimer != null) clearTimeout(session.flushTimer);
       if (session.exitedCause == null) session.shell?.kill();
       session.screen.dispose();
     }
@@ -292,6 +335,8 @@ export class SessionManager {
   /** 스스로 정상으로 끝난 셸의 자리는 닫는다. 그 밖의 끝맺음은 자리를 남겨 사유를 보이게 한다. */
   #handleExit(session: Session, exitCode: number, signal: number | undefined): void {
     if (!this.#sessions.has(session.sessionId) || session.exitedCause != null) return;
+    // 더 올 출력이 없다 — 모아둔 마지막 출력을 내보내고 끝맺는다.
+    this.#flushOutput(session);
     // 신호로 끝나면 종료 코드가 없다.
     const endedBySignal = signal != null && signal !== 0;
     session.exitedCause = endedBySignal ? { kind: "endedBySignal" } : { kind: "exited", exitCode };
