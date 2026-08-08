@@ -35,6 +35,8 @@ export class HistoryStore {
   private readonly snapshotsDir: string;
   private readonly indexPath: string;
   private index: Map<string, IndexEntry> | undefined;
+  /** 스냅샷 목록 메모리 캐시(최신순) — 쓰기 주체가 이 인스턴스뿐이라 save/prune 때만 갱신하면 된다. */
+  private snapshotsCache: Snapshot[] | undefined;
 
   constructor(storageRoot: string, workspaceFolderPath: string) {
     const workspaceId = createHash("sha1").update(workspaceFolderPath).digest("hex");
@@ -122,6 +124,12 @@ export class HistoryStore {
     return state;
   }
 
+  /** blob 파일(압축) 크기 — diff 열람 상한 판정용. 압축 크기 ≤ 원본이라 보수적 판정. */
+  async blobSize(hash: string): Promise<number> {
+    const blobPath = path.join(this.blobsDir, hash.slice(0, 2), hash.slice(2));
+    return (await fs.stat(blobPath)).size;
+  }
+
   /** blob 내용을 읽어 원본 바이트로 반환. */
   async readBlob(hash: string): Promise<Uint8Array> {
     const blobPath = path.join(this.blobsDir, hash.slice(0, 2), hash.slice(2));
@@ -134,6 +142,7 @@ export class HistoryStore {
       path.join(this.snapshotsDir, `${snapshot.at}.json`),
       JSON.stringify(snapshot),
     );
+    this.snapshotsCache?.unshift(snapshot); // at = 현재 시각 — 항상 최신이라 맨 앞 삽입
     return snapshot;
   }
 
@@ -149,6 +158,9 @@ export class HistoryStore {
       const snapshot = JSON.parse(await fs.readFile(snapshotPath, "utf8")) as Snapshot;
       if (snapshot.at < cutoff) {
         await fs.rm(snapshotPath);
+        if (this.snapshotsCache !== undefined) {
+          this.snapshotsCache = this.snapshotsCache.filter((cached) => cached.at !== snapshot.at);
+        }
         continue;
       }
       for (const entry of snapshot.entries) {
@@ -168,20 +180,23 @@ export class HistoryStore {
     }
   }
 
-  /** 전체 스냅샷 목록, 최신순. */
-  async listSnapshots(): Promise<Snapshot[]> {
-    const fileNames = await fs.readdir(this.snapshotsDir);
-    const snapshots = await Promise.all(
-      fileNames
-        .filter((fileName) => fileName.endsWith(".json"))
-        .map(
-          async (fileName) =>
-            JSON.parse(
-              await fs.readFile(path.join(this.snapshotsDir, fileName), "utf8"),
-            ) as Snapshot,
-        ),
-    );
-    return snapshots.sort((a, b) => b.at - a.at);
+  /** 전체 스냅샷 목록, 최신순 — 최초 접근 시 디스크에서 적재 후 메모리 캐시. */
+  async listSnapshots(): Promise<readonly Snapshot[]> {
+    if (this.snapshotsCache === undefined) {
+      const fileNames = await fs.readdir(this.snapshotsDir);
+      const snapshots = await Promise.all(
+        fileNames
+          .filter((fileName) => fileName.endsWith(".json"))
+          .map(
+            async (fileName) =>
+              JSON.parse(
+                await fs.readFile(path.join(this.snapshotsDir, fileName), "utf8"),
+              ) as Snapshot,
+          ),
+      );
+      this.snapshotsCache = snapshots.sort((a, b) => b.at - a.at);
+    }
+    return this.snapshotsCache;
   }
 }
 

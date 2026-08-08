@@ -11,6 +11,7 @@
   "1 file": "파일 1개",
   "{0} files": "파일 {0}개",
   "{0} ({1} ↔ Current)": "{0} ({1} ↔ 현재)",
+  "File is too large to show diff. Use rollback to restore it.": "파일이 너무 커서 diff 를 표시할 수 없습니다. 복원은 되돌리기를 사용하세요.",
   "Local History failed to record changes: {0}": "로컬 이력 기록 실패: {0}",
   "Local History failed to open diff: {0}": "로컬 이력 diff 열기 실패: {0}",
   "Local History failed to rollback: {0}": "로컬 이력 되돌리기 실패: {0}",
