@@ -2,6 +2,7 @@
 // 메시지는 줄 단위 JSON 이다. 출력 바이트는 JSON 에 싣기 위해 base64 로 담는다.
 // 세션·배치의 진실은 daemon 에 있고, 확장 호스트는 조작·출력을 중계만 한다.
 
+import { StringDecoder } from "node:string_decoder";
 import type { LayoutTree } from "./layout/layout-tree.ts";
 import type { DropPosition } from "./layout/layout-operations.ts";
 import type { SessionEndCause, StartFailureCause } from "./session-causes.ts";
@@ -124,11 +125,15 @@ export function encodeMessage(message: ExtensionToDaemon | DaemonToExtension): s
   return `${JSON.stringify(message)}\n`;
 }
 
-/** 소켓 청크를 줄 단위 JSON 으로 되살린다. 청크 경계가 메시지 경계와 다른 것을 흡수한다. */
+/**
+ * 소켓 청크를 줄 단위 JSON 으로 되살린다. 청크 경계가 메시지 경계와 다른 것을 흡수하고,
+ * UTF-8 멀티바이트 문자 중간에서 잘린 청크도 StringDecoder 가 경계를 보존해 깨지지 않는다.
+ */
 export function createLineDecoder(onMessage: (message: unknown) => void): (chunk: Buffer) => void {
+  const decoder = new StringDecoder("utf8");
   let pending = "";
   return (chunk) => {
-    pending += chunk.toString("utf8");
+    pending += decoder.write(chunk);
     for (;;) {
       const newlineIndex = pending.indexOf("\n");
       if (newlineIndex < 0) return;

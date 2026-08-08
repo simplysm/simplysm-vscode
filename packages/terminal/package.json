@@ -1,10 +1,17 @@
 {
   "name": "simplysm-terminal",
   "displayName": "Simplysm Terminal",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "license": "Apache-2.0",
-  "keywords": ["terminal", "split", "grid", "panel", "xterm", "shell"],
+  "keywords": [
+    "terminal",
+    "split",
+    "grid",
+    "panel",
+    "xterm",
+    "shell"
+  ],
   "description": "%description%",
   "publisher": "simplysm",
   "repository": {

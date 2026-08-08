@@ -1,10 +1,16 @@
 {
   "name": "simplysm-tasks",
   "displayName": "Simplysm Tasks",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "license": "Apache-2.0",
-  "keywords": ["tasks", "todo", "checklist", "memo", "notes"],
+  "keywords": [
+    "tasks",
+    "todo",
+    "checklist",
+    "memo",
+    "notes"
+  ],
   "description": "%description%",
   "publisher": "simplysm",
   "repository": {
@@ -70,20 +76,26 @@
         "key": "ctrl+z",
         "mac": "cmd+z",
         "command": "simplysm-tasks.historyKey",
-        "args": { "action": "undo" },
+        "args": {
+          "action": "undo"
+        },
         "when": "activeCustomEditorId == 'simplysm-tasks.editor' && !inputFocus"
       },
       {
         "key": "ctrl+shift+z",
         "mac": "cmd+shift+z",
         "command": "simplysm-tasks.historyKey",
-        "args": { "action": "redo" },
+        "args": {
+          "action": "redo"
+        },
         "when": "activeCustomEditorId == 'simplysm-tasks.editor' && !inputFocus"
       },
       {
         "key": "ctrl+y",
         "command": "simplysm-tasks.historyKey",
-        "args": { "action": "redo" },
+        "args": {
+          "action": "redo"
+        },
         "when": "activeCustomEditorId == 'simplysm-tasks.editor' && !inputFocus"
       }
     ],

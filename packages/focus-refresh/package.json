@@ -1,10 +1,17 @@
 {
   "name": "simplysm-focus-refresh",
   "displayName": "Simplysm Focus Refresh",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "license": "Apache-2.0",
-  "keywords": ["refresh", "reload", "focus", "external changes", "sync", "webstorm"],
+  "keywords": [
+    "refresh",
+    "reload",
+    "focus",
+    "external changes",
+    "sync",
+    "webstorm"
+  ],
   "description": "%description%",
   "publisher": "simplysm",
   "repository": {
