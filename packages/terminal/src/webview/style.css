@@ -91,7 +91,10 @@ body {
   height: var(--tab-height, 35px);
   display: flex;
   align-items: stretch;
-  overflow: hidden;
+  /* 넘친 tab 은 가로 스크롤로 접근한다 — 휠로 움직이고 스크롤바는 그리지 않는다. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
   background: var(--vscode-editorGroupHeader-tabsBackground, transparent);
   font-family: var(--vscode-font-family);
   font-size: var(--vscode-font-size);
@@ -103,8 +106,8 @@ body {
  * hover 색의 미정의는 "변화 없음" 이라 그 상태의 기존 색으로 되돌아가게 대체한다.
  */
 .tab-label {
-  flex: 0 1 auto;
-  min-width: 0;
+  /* 수축시키지 않는다 — 라벨이 먼저 붕괴하면 스크롤이 생기기 전에 이름이 사라진다. */
+  flex: 0 0 auto;
   max-width: 16em;
   box-sizing: border-box;
   display: flex;

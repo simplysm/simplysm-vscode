@@ -158,6 +158,16 @@ export class LayoutView {
 
     const tabBarElement = document.createElement("div");
     tabBarElement.className = "tab-bar";
+    // 넘친 tab 은 가로 스크롤로 접근한다 — 세로 휠을 가로 이동으로 옮긴다.
+    tabBarElement.addEventListener(
+      "wheel",
+      (event) => {
+        if (event.deltaY === 0) return;
+        event.preventDefault();
+        tabBarElement.scrollLeft += event.deltaY;
+      },
+      { passive: false },
+    );
     for (const tab of node.tabs) {
       tabBarElement.appendChild(this.#buildTabLabel(node.paneId, tab.tabId));
     }
@@ -368,8 +378,11 @@ export class LayoutView {
       label.getBoundingClientRect(),
     );
     const index = resolveTabInsertIndex(event.clientX, rects);
+    // 좌표는 화면 기준이라 스크롤된 만큼 되돌려야 bar 내용 기준이 된다.
     const lineX =
-      index < rects.length ? rects[index].left - barRect.left : (rects.at(-1)?.right ?? 0) - barRect.left;
+      (index < rects.length ? rects[index].left : (rects.at(-1)?.right ?? 0)) -
+      barRect.left +
+      tabBarElement.scrollLeft;
     return { index, lineX };
   }
 
