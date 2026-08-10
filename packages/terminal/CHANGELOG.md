@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.5 - 2026-08-10
+
+- Terminal tab bar scrolls horizontally with the mouse wheel when tabs overflow
+
 ## 1.0.4 - 2026-08-10
 
 - Changelog tab now appears on the extension details page

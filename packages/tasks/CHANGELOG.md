@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.4 - 2026-08-10
+
+- Long group names now wrap instead of being cut off, and the undo toast no longer covers the last rows
+
 ## 1.0.3 - 2026-08-10
 
 - Changelog tab now appears on the extension details page
