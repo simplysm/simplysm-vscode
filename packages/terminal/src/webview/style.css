@@ -85,6 +85,7 @@ body {
 }
 
 .tab-bar {
+  position: relative;
   flex: 0 0 auto;
   /* window.density.editorTabHeight 를 따른 값 — 확장 호스트가 설정에서 만들어 보낸다. */
   height: var(--tab-height, 35px);
@@ -199,6 +200,22 @@ body {
 
 .tab-label.dragging {
   opacity: 0.5;
+}
+
+/* tab 을 끌어 놓을 때 삽입될 자리를 가리키는 세로 선. */
+.tab-insert-line {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--vscode-focusBorder, var(--vscode-foreground));
+  pointer-events: none;
+}
+
+.tab-insert-line[hidden] {
+  display: none;
 }
 
 .tab-add {

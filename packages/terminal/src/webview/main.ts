@@ -114,8 +114,14 @@ const layoutView = new LayoutView(tabsElement, rootElement, {
     post({ type: "setFocusedPane", paneId });
   },
   onFocusPane: (paneId) => post({ type: "setFocusedPane", paneId }),
-  onMoveTab: (tabId, targetPaneId, position) =>
-    post({ type: "moveTab", tabId, targetPaneId, position }),
+  onMoveTab: (tabId, targetPaneId, position, insertIndex) =>
+    post({
+      type: "moveTab",
+      tabId,
+      targetPaneId,
+      position,
+      ...(insertIndex == null ? {} : { insertIndex }),
+    }),
   onSetSplitRatio: (splitPath, boundaryIndex, firstRatio) =>
     post({ type: "setSplitRatio", splitPath, boundaryIndex, firstRatio }),
   // 누른 자리에 생겨야 손을 옮기지 않고 이어 쓸 수 있다.

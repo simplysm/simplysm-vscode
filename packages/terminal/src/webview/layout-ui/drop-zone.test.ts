@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isUnchangedDrop, resolveDropZone } from "./drop-zone.ts";
+import { isUnchangedDrop, resolveDropZone, resolveTabInsertIndex } from "./drop-zone.ts";
 
 const rect = { x: 100, y: 200, width: 300, height: 300 };
 
@@ -36,6 +36,21 @@ test("자기 pane 의 가운데에 놓는 것은 변화가 없다", () => {
 test("tab 이 하나뿐인 pane 에서 자기 방향 구역에 놓는 것은 변화가 없다", () => {
   assert.equal(isUnchangedDrop("pane-1", 1, "pane-1", "left"), true);
   assert.equal(isUnchangedDrop("pane-1", 2, "pane-1", "left"), false);
+});
+
+test("tab 중간점을 기준으로 삽입 자리가 정해진다", () => {
+  const tabRects = [
+    { x: 0, y: 0, width: 100, height: 30 },
+    { x: 100, y: 0, width: 100, height: 30 },
+  ];
+  assert.equal(resolveTabInsertIndex(10, tabRects), 0);
+  assert.equal(resolveTabInsertIndex(60, tabRects), 1);
+  assert.equal(resolveTabInsertIndex(140, tabRects), 1);
+  assert.equal(resolveTabInsertIndex(160, tabRects), 2);
+});
+
+test("tab 이 없으면 삽입 자리는 맨 앞이다", () => {
+  assert.equal(resolveTabInsertIndex(50, []), 0);
 });
 
 test("다른 pane 으로 놓는 것은 어느 구역이든 변화가 있다", () => {

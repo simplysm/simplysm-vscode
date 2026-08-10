@@ -237,6 +237,7 @@ class TerminalPanel implements vscode.WebviewViewProvider {
           tabId: message.tabId,
           targetPaneId: message.targetPaneId,
           position: message.position,
+          ...(message.insertIndex == null ? {} : { insertIndex: message.insertIndex }),
         });
         return;
       case "setActiveTab":

@@ -13,7 +13,7 @@ import {
 import type { DropPosition } from "../../layout/layout-operations.ts";
 import type { ViewTexts } from "../../webview-messages.ts";
 import { setDataText, setDataTooltip, setLabel, setText } from "../dom-text.ts";
-import { isUnchangedDrop, resolveDropZone } from "./drop-zone.ts";
+import { isUnchangedDrop, resolveDropZone, resolveTabInsertIndex } from "./drop-zone.ts";
 import { Overlays } from "./overlays.ts";
 
 /** tab 하나를 그리는 데 필요한 것. 이름은 사용자 환경에서 온 값이라 번역 대상이 아니다. */
@@ -30,7 +30,12 @@ export interface LayoutHost {
   readonly tabView: (tabId: string) => TabView | undefined;
   readonly onActivateTab: (paneId: string, tabId: string) => void;
   readonly onFocusPane: (paneId: string) => void;
-  readonly onMoveTab: (tabId: string, targetPaneId: string, position: DropPosition) => void;
+  readonly onMoveTab: (
+    tabId: string,
+    targetPaneId: string,
+    position: DropPosition,
+    insertIndex?: number,
+  ) => void;
   readonly onSetSplitRatio: (
     splitPath: readonly number[],
     boundaryIndex: number,
@@ -167,13 +172,21 @@ export class LayoutView {
       this.#placedElements.set(tab.tabId, view.rootElement);
     }
 
+    // 분할 미리 보기는 몸통 위에만 뜬다 — tab bar 는 분할이 아니라 삽입의 영역이다.
     const previewElement = document.createElement("div");
     previewElement.className = "drop-preview";
     previewElement.hidden = true;
+    bodyElement.appendChild(previewElement);
 
-    paneElement.append(tabBarElement, bodyElement, previewElement);
+    const insertLineElement = document.createElement("div");
+    insertLineElement.className = "tab-insert-line";
+    insertLineElement.hidden = true;
+    tabBarElement.appendChild(insertLineElement);
+
+    paneElement.append(tabBarElement, bodyElement);
     this.#wirePaneFocus(paneElement, node.paneId);
-    this.#wirePaneDrop(paneElement, previewElement, node.paneId);
+    this.#wireBodyDrop(bodyElement, previewElement, node.paneId);
+    this.#wireTabBarDrop(tabBarElement, insertLineElement, node.paneId);
     return paneElement;
   }
 
@@ -285,9 +298,9 @@ export class LayoutView {
     });
   }
 
-  #wirePaneDrop(paneElement: HTMLElement, previewElement: HTMLElement, paneId: string): void {
-    paneElement.addEventListener("dragover", (event) => {
-      const zone = this.#dropZoneAt(event, paneElement, paneId);
+  #wireBodyDrop(bodyElement: HTMLElement, previewElement: HTMLElement, paneId: string): void {
+    bodyElement.addEventListener("dragover", (event) => {
+      const zone = this.#dropZoneAt(event, bodyElement, paneId);
       if (zone == null) {
         previewElement.hidden = true;
         return;
@@ -297,13 +310,13 @@ export class LayoutView {
       previewElement.className = `drop-preview ${zone}`;
       previewElement.hidden = false;
     });
-    paneElement.addEventListener("dragleave", (event) => {
+    bodyElement.addEventListener("dragleave", (event) => {
       const goingTo = event.relatedTarget;
-      if (goingTo instanceof Node && paneElement.contains(goingTo)) return;
+      if (goingTo instanceof Node && bodyElement.contains(goingTo)) return;
       previewElement.hidden = true;
     });
-    paneElement.addEventListener("drop", (event) => {
-      const zone = this.#dropZoneAt(event, paneElement, paneId);
+    bodyElement.addEventListener("drop", (event) => {
+      const zone = this.#dropZoneAt(event, bodyElement, paneId);
       previewElement.hidden = true;
       if (zone == null) return;
       event.preventDefault();
@@ -311,15 +324,64 @@ export class LayoutView {
     });
   }
 
+  /** tab bar 는 분할 없이 삽입만 받는다 — 놓을 자리를 tab 사이 세로 선으로 보인다. */
+  #wireTabBarDrop(
+    tabBarElement: HTMLElement,
+    insertLineElement: HTMLElement,
+    paneId: string,
+  ): void {
+    tabBarElement.addEventListener("dragover", (event) => {
+      const insert = this.#tabInsertAt(event, tabBarElement);
+      if (insert == null) {
+        insertLineElement.hidden = true;
+        return;
+      }
+      event.preventDefault();
+      if (event.dataTransfer != null) event.dataTransfer.dropEffect = "move";
+      insertLineElement.style.left = `${insert.lineX}px`;
+      insertLineElement.hidden = false;
+    });
+    tabBarElement.addEventListener("dragleave", (event) => {
+      const goingTo = event.relatedTarget;
+      if (goingTo instanceof Node && tabBarElement.contains(goingTo)) return;
+      insertLineElement.hidden = true;
+    });
+    tabBarElement.addEventListener("drop", (event) => {
+      const insert = this.#tabInsertAt(event, tabBarElement);
+      insertLineElement.hidden = true;
+      const drag = this.#drag;
+      if (insert == null || drag == null) return;
+      event.preventDefault();
+      this.#host.onMoveTab(drag.tabId, paneId, "center", insert.index);
+      this.#endDrag();
+    });
+  }
+
+  /** tab bar 위 포인터의 삽입 자리와 선을 그을 x(바 기준). 드래그 중이 아니면 없음. */
+  #tabInsertAt(
+    event: DragEvent,
+    tabBarElement: HTMLElement,
+  ): { index: number; lineX: number } | undefined {
+    if (this.#drag == null) return undefined;
+    const barRect = tabBarElement.getBoundingClientRect();
+    const rects = [...tabBarElement.querySelectorAll<HTMLElement>(".tab-label")].map((label) =>
+      label.getBoundingClientRect(),
+    );
+    const index = resolveTabInsertIndex(event.clientX, rects);
+    const lineX =
+      index < rects.length ? rects[index].left - barRect.left : (rects.at(-1)?.right ?? 0) - barRect.left;
+    return { index, lineX };
+  }
+
   /** 놓을 수 있는 자리면 그 구역, 변화가 없거나 끄는 중이 아니면 없음. */
   #dropZoneAt(
     event: DragEvent,
-    paneElement: HTMLElement,
+    bodyElement: HTMLElement,
     paneId: string,
   ): DropPosition | undefined {
     const drag = this.#drag;
     if (drag == null) return undefined;
-    const rect = paneElement.getBoundingClientRect();
+    const rect = bodyElement.getBoundingClientRect();
     const zone = resolveDropZone(event.clientX, event.clientY, rect);
     if (isUnchangedDrop(drag.sourcePaneId, drag.sourceTabCount, paneId, zone)) return undefined;
     return zone;
@@ -406,10 +468,10 @@ export class LayoutView {
 
   #endDrag(): void {
     this.#drag = undefined;
-    for (const previewElement of this.#containerElement.querySelectorAll<HTMLElement>(
-      ".drop-preview",
+    for (const element of this.#containerElement.querySelectorAll<HTMLElement>(
+      ".drop-preview, .tab-insert-line",
     )) {
-      previewElement.hidden = true;
+      element.hidden = true;
     }
   }
 

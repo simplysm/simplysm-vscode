@@ -112,6 +112,38 @@ test("끄는 동안 놓을 자리가 보이고, 결과가 같아지는 자리는
   await expect(frame.locator(".tab-label")).toHaveCount(2);
 });
 
+test("tab bar 안에서 끌면 분할 미리 보기 없이 삽입선이 뜨고 순서가 바뀐다", async ({
+  workbox,
+}) => {
+  const frame = await openTerminalPanel(workbox);
+  await addTab(frame);
+  const tabIds = await frame
+    .locator(".tab-label")
+    .evaluateAll((labels) => labels.map((label) => (label as HTMLElement).dataset["tabId"]));
+
+  // 두 번째 tab 을 첫 tab 의 왼쪽 절반 위로 끈다 — 분할 미리 보기가 아니라 삽입선이 떠야 한다
+  await dragTab(
+    workbox,
+    frame.locator(".tab-label").nth(1),
+    frame.locator(".tab-label").first(),
+    { xRatio: 0.25, yRatio: 0.5 },
+    { drop: false },
+  );
+  await expect(frame.locator(".tab-insert-line")).toBeVisible({ timeout: 15_000 });
+  await expect(frame.locator(".drop-preview:visible")).toHaveCount(0);
+  await workbox.screenshot({ path: path.join(shotDir, "layout-tab-insert-line.png") });
+
+  // 놓으면 pane 은 그대로 하나이고 tab 순서만 뒤집힌다
+  await workbox.mouse.up();
+  await expect(frame.locator(".pane")).toHaveCount(1);
+  await expect(frame.locator(".tab-label").first()).toHaveAttribute(
+    "data-tab-id",
+    tabIds[1]!,
+    { timeout: 15_000 },
+  );
+  await expect(frame.locator(".tab-label").nth(1)).toHaveAttribute("data-tab-id", tabIds[0]!);
+});
+
 test("드래그 도중 Esc 를 누르면 배치가 그대로다", async ({ workbox }) => {
   const frame = await openTerminalPanel(workbox);
   await addTab(frame);

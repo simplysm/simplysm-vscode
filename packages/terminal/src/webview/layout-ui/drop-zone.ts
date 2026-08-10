@@ -32,6 +32,18 @@ export function resolveDropZone(
 }
 
 /**
+ * tab bar 위 포인터가 가리키는 삽입 자리. 각 tab 의 가로 중간점을 지나면 그 다음 자리다.
+ * tabRects 는 화면에 놓인 순서여야 한다. 결과는 0(맨 앞)부터 tab 수(맨 뒤)까지다.
+ */
+export function resolveTabInsertIndex(pointerX: number, tabRects: readonly DropRect[]): number {
+  let index = 0;
+  for (const rect of tabRects) {
+    if (pointerX >= rect.x + rect.width / 2) index += 1;
+  }
+  return index;
+}
+
+/**
  * 놓아도 배치가 그대로인 자리인가. 그런 구역은 미리 보기에 표시하지 않는다 —
  * 배치가 한 번 깜빡이고 제자리로 돌아오면 사용자가 실패로 오해한다.
  */

@@ -240,6 +240,40 @@ test("가운데로 합류한 tab 은 대상 pane 목록 끝에 붙고 곧바로 
   assert.deepEqual(next, { root: pane("p2", ["t2", "t1"], "t1"), focusedPaneId: "p2" });
 });
 
+test("삽입 자리를 실으면 같은 pane 안에서 tab 순서가 바뀌고 활성은 그대로다", () => {
+  const tree: LayoutTree = { root: pane("p1", ["a", "b", "c"], "a"), focusedPaneId: "p1" };
+  const next = moveTab(tree, "c", "p1", "center", undefined, 0);
+  assert.deepEqual(
+    (next.root as PaneNode).tabs.map((tab) => tab.tabId),
+    ["c", "a", "b"],
+  );
+  assert.equal((next.root as PaneNode).activeTabId, "a");
+  assertLayoutInvariants(next);
+});
+
+test("자기 앞뒤 사이 삽입 자리는 변화가 없다", () => {
+  const tree: LayoutTree = { root: pane("p1", ["a", "b"], "a"), focusedPaneId: "p1" };
+  assert.deepEqual(moveTab(tree, "a", "p1", "center", undefined, 0), tree);
+  assert.deepEqual(moveTab(tree, "a", "p1", "center", undefined, 1), tree);
+});
+
+test("다른 pane 으로의 합류도 삽입 자리를 지킨다", () => {
+  const tree = addTab(twoPaneTree(), "p2", "t3");
+  const next = moveTab(tree, "t1", "p2", "center", undefined, 1);
+  assert.deepEqual(
+    (next.root as PaneNode).tabs.map((tab) => tab.tabId),
+    ["t2", "t1", "t3"],
+  );
+  assert.equal((next.root as PaneNode).activeTabId, "t1");
+  assertLayoutInvariants(next);
+});
+
+test("범위 밖 삽입 자리는 오류다", () => {
+  const tree: LayoutTree = { root: pane("p1", ["a", "b"], "a"), focusedPaneId: "p1" };
+  assert.throws(() => moveTab(tree, "a", "p1", "center", undefined, -1), LayoutError);
+  assert.throws(() => moveTab(tree, "a", "p1", "center", undefined, 3), LayoutError);
+});
+
 test("4방향 드롭이 그 방향으로 pane 을 가르고 절반씩 나눠 갖는다", () => {
   const single = createFirstPane(emptyTree, "t1", "p1");
   const two = addTab(single, "p1", "t2");

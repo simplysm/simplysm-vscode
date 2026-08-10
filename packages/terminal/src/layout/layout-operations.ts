@@ -154,20 +154,37 @@ export function moveTab<F>(
   targetPaneId: string,
   position: DropPosition,
   newPaneId?: string,
+  insertIndex?: number,
 ): LayoutTree<F> {
   const source = findOwnerPane(tree, tabId);
-  requirePane(collectPanes(tree.root), targetPaneId);
+  const target = requirePane(collectPanes(tree.root), targetPaneId);
   // 옮기는 것은 자리와 거기 붙은 세션이 함께다. 새로 만들면 붙어 있던 세션을 잃는다.
   const moving = source.tabs.find((tab) => tab.tabId === tabId)!;
 
   if (position === "center") {
-    if (source.paneId === targetPaneId) return tree;
+    // 삽입 위치는 옮기기 전 대상 pane 의 tab 사이 자리다 (0 = 맨 앞, tab 수 = 맨 뒤).
+    if (insertIndex != null && (insertIndex < 0 || insertIndex > target.tabs.length)) {
+      throw new LayoutError(`The insert index is out of range: ${insertIndex}`);
+    }
+    if (source.paneId === targetPaneId) {
+      if (insertIndex == null) return tree;
+      const currentIndex = source.tabs.findIndex((tab) => tab.tabId === tabId);
+      // 자기 앞뒤 사이에 놓는 것은 순서가 그대로다.
+      if (insertIndex === currentIndex || insertIndex === currentIndex + 1) return tree;
+      const adjustedIndex = insertIndex > currentIndex ? insertIndex - 1 : insertIndex;
+      const root = replacePane(tree.root, targetPaneId, (pane) => {
+        const tabs = pane.tabs.filter((tab) => tab.tabId !== tabId);
+        tabs.splice(adjustedIndex, 0, moving);
+        return { ...pane, tabs };
+      });
+      return { ...tree, root };
+    }
     const removed = removeTabForMove(tree, tabId, source);
-    const root = replacePane(removed.root, targetPaneId, (pane) => ({
-      ...pane,
-      tabs: [...pane.tabs, moving],
-      activeTabId: tabId,
-    }));
+    const root = replacePane(removed.root, targetPaneId, (pane) => {
+      const tabs = [...pane.tabs];
+      tabs.splice(insertIndex ?? tabs.length, 0, moving);
+      return { ...pane, tabs, activeTabId: tabId };
+    });
     return { ...removed, root };
   }
 

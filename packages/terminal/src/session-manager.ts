@@ -290,8 +290,10 @@ export class SessionManager {
     this.#changeLayout((tree) => setTabName(tree, tabId, name));
   }
 
-  moveTab(tabId: string, targetPaneId: string, position: DropPosition): void {
-    this.#changeLayout((tree) => moveTab(tree, tabId, targetPaneId, position, randomUUID()));
+  moveTab(tabId: string, targetPaneId: string, position: DropPosition, insertIndex?: number): void {
+    this.#changeLayout((tree) =>
+      moveTab(tree, tabId, targetPaneId, position, randomUUID(), insertIndex),
+    );
   }
 
   setActiveTab(paneId: string, tabId: string): void {

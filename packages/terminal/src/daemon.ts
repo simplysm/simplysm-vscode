@@ -115,7 +115,7 @@ async function handleMessage(socket: net.Socket, message: ExtensionToDaemon): Pr
       manager.renameTab(message.tabId, message.name);
       return;
     case "moveTab":
-      manager.moveTab(message.tabId, message.targetPaneId, message.position);
+      manager.moveTab(message.tabId, message.targetPaneId, message.position, message.insertIndex);
       return;
     case "setActiveTab":
       manager.setActiveTab(message.paneId, message.tabId);

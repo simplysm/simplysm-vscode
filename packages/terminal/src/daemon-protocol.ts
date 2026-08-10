@@ -65,6 +65,8 @@ export type ExtensionToDaemon =
       readonly tabId: string;
       readonly targetPaneId: string;
       readonly position: DropPosition;
+      /** center 전용 — 대상 pane 의 tab 사이 삽입 자리. 없으면 맨 뒤. */
+      readonly insertIndex?: number;
     }
   | { readonly type: "setActiveTab"; readonly paneId: string; readonly tabId: string }
   | { readonly type: "setFocusedPane"; readonly paneId: string }
