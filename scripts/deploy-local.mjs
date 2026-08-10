@@ -136,25 +136,19 @@ function restoreInstalledExtensions(installedBefore, previousMetadata, previousA
 
 const manifests = extensionConfigs.map((config) => {
   const packagePath = path.join(rootPath, "packages", config.dirName, "package.json");
-  const originalText = fs.readFileSync(packagePath, "utf8");
-  const manifest = JSON.parse(originalText);
+  const manifest = JSON.parse(fs.readFileSync(packagePath, "utf8"));
+  // 로컬 빌드는 마켓플레이스 버전보다 높아야 자동 갱신에 덮이지 않는다.
+  // 버전은 vsix 에만 새기고 package.json 은 건드리지 않는다 (--no-update-package-json).
   const nextVersion = incrementPatch(manifest.version);
-  return { ...config, packagePath, originalText, manifest, nextVersion };
+  return { ...config, manifest, nextVersion };
 });
 
-let versionsChanged = false;
 let actualInstallStarted = false;
 let installedBefore;
 let previousMetadata;
 let previousArtifactPath = currentArtifactPath;
 
 try {
-  for (const item of manifests) {
-    item.manifest.version = item.nextVersion;
-    fs.writeFileSync(item.packagePath, `${JSON.stringify(item.manifest, undefined, 2)}\n`);
-  }
-  versionsChanged = true;
-
   runPnpm(["build"]);
   // runPnpm(["typecheck"]);
   // runPnpm(["lint"]);
@@ -173,6 +167,9 @@ try {
       "exec",
       "vsce",
       "package",
+      item.nextVersion,
+      "--no-update-package-json",
+      "--no-git-tag-version",
       "--no-dependencies",
       "--skip-license",
       // monorepo — vsce 는 README 상대경로를 repo 루트 기준으로 재작성하므로 패키지 폴더 기준 URL 지정
@@ -253,9 +250,6 @@ try {
   if (fs.existsSync(rollbackArtifactPath)) {
     fs.rmSync(currentArtifactPath, { recursive: true, force: true });
     fs.renameSync(rollbackArtifactPath, currentArtifactPath);
-  }
-  if (versionsChanged) {
-    for (const item of manifests) fs.writeFileSync(item.packagePath, item.originalText);
   }
   fs.rmSync(nextArtifactPath, { recursive: true, force: true });
 
