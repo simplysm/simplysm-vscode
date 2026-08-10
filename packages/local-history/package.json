@@ -22,6 +22,7 @@
   },
   "files": [
     "LICENSE",
+    "CHANGELOG.md",
     "dist/**/*.cjs",
     "images/icon.png",
     "images/show-history.png",

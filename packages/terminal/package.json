@@ -21,6 +21,7 @@
   },
   "files": [
     "LICENSE",
+    "CHANGELOG.md",
     "dist/**/*.cjs",
     "dist/node_modules/**",
     "dist/webview/**/*.js",

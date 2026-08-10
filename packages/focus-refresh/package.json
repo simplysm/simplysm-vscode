@@ -21,6 +21,7 @@
   },
   "files": [
     "LICENSE",
+    "CHANGELOG.md",
     "dist/**/*.cjs",
     "images/icon.png",
     "l10n/*.json",
