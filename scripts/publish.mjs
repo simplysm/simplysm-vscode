@@ -41,7 +41,9 @@ function run(cmd, cmdArgs, opts = {}) {
     cwd: rootPath,
     stdio: opts.capture ? ["ignore", "pipe", "inherit"] : "inherit",
     encoding: "utf8",
-    shell: process.platform === "win32",
+    // shell 경유 시 인자가 quoting 없이 합쳐져 공백 포함 인자(커밋 메시지 등)가 쪼개짐.
+    // pnpm(.cmd)만 shell 이 필요하고 git 은 직접 실행.
+    shell: process.platform === "win32" && cmd === "pnpm",
   });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`${cmd} ${cmdArgs.join(" ")} 실패`);
