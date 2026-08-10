@@ -52,6 +52,16 @@ function git(...gitArgs) {
   return run("git", gitArgs, { capture: true });
 }
 
+// 마켓플레이스에 실제 배포된 버전 조회 (미등록이면 null)
+function getMarketplaceVersion(manifest) {
+  const result = spawnSync(
+    "pnpm", ["exec", "vsce", "show", `${manifest.publisher}.${manifest.name}`, "--json"],
+    { cwd: rootPath, stdio: ["ignore", "pipe", "pipe"], encoding: "utf8", shell: process.platform === "win32" },
+  );
+  if (result.status !== 0) return null;
+  return JSON.parse(result.stdout).versions[0].version;
+}
+
 function tagExists(tag) {
   const result = spawnSync("git", ["rev-parse", "--verify", "--quiet", `refs/tags/${tag}`], {
     cwd: rootPath,
@@ -82,7 +92,16 @@ for (const dirName of extensionDirNames) {
   const currentTag = `${manifest.name}@${manifest.version}`;
 
   if (!tagExists(currentTag)) {
-    // 첫 실행: 현재 상태를 배포 기준점으로 삼고 배포는 건너뜀
+    // 첫 실행: 마켓플레이스 실제 버전과 대조해 기준점의 정합성을 확인
+    const marketVersion = getMarketplaceVersion(manifest);
+    if (marketVersion !== manifest.version) {
+      console.error(
+        `[${dirName}] tag 없음 + 마켓플레이스 버전(${marketVersion ?? "미등록"}) ≠ 로컬(${manifest.version}).\n` +
+        `  마지막 배포 시점 커밋에 ${currentTag} tag 를 만든 뒤 다시 실행하세요.`,
+      );
+      process.exit(1);
+    }
+    // 마켓 버전과 일치 → 현재 상태를 배포 기준점으로 삼고 배포는 건너뜀
     git("tag", currentTag);
     baselineTags.push(currentTag);
     console.log(`[${dirName}] baseline tag 생성: ${currentTag} (배포 건너뜀)`);
