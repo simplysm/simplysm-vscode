@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.2 - 2026-08-10
+
+- Fix garbled multibyte characters when terminal output is split across chunks
+- Speed up history browsing by caching snapshots and skip diff for oversized files (rollback still works)
+
 ## 1.0.0 - 2026-08-07
 
 Initial release.
