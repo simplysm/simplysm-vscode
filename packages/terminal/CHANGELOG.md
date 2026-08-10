@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.4 - 2026-08-10
+
+- Changelog tab now appears on the extension details page
+
 ## 1.0.3 - 2026-08-10
 
 - chore: deploy:local keeps package.json versions untouched (vsix-only bump)
