@@ -545,7 +545,7 @@ interface Section {
   readonly rootEl: HTMLElement;
   readonly listEl: HTMLUListElement;
   readonly ghost: Row;
-  nameInput: HTMLInputElement | null;
+  nameInput: HTMLTextAreaElement | null;
   toggleEl: HTMLButtonElement | null;
   /** 접힘 시 소속 항목 수 배지 (spec §4.7, 사용자 확정). */
   countEl: HTMLElement | null;
@@ -567,6 +567,7 @@ function confirmGroupName(section: Section): void {
   if (nextName === header.group) return;
   if (nextName.trim() === "") {
     input.value = header.group; // 빈 이름 = 원래 이름 유지 (사용자 확정)
+    resizeTextarea(input);
     return;
   }
   const nextHeader: GroupHeader = { ...header, group: nextName }; // 미지 필드 보존 (spec §5.2)
@@ -653,9 +654,14 @@ function createSection(header: GroupHeader | null): Section {
     });
     section.toggleEl = toggleEl;
 
-    const nameInput = document.createElement("input");
-    nameInput.type = "text";
+    // 좁은 폭에서 긴 이름이 잘리지 않게 textarea + 자동 높이 — 항목 행과 동일 패턴 (리뷰).
+    // 줄바꿈 "입력"은 계속 불허 — 모든 Enter 변형이 아래 keydown 에서 확정으로 처리돼 기본동작 차단.
+    const nameInput = document.createElement("textarea");
+    nameInput.rows = 1;
     nameInput.className = "group-name";
+    nameInput.addEventListener("input", () => {
+      resizeTextarea(nameInput);
+    });
     nameInput.setAttribute("aria-label", t("Group name")); // 상시 편집 필드 정체를 SR 에 (리뷰)
     nameInput.title = t("Rename group — Enter to save"); // 편집 가능 발견성 (리뷰)
     section.nameInput = nameInput;
@@ -674,7 +680,10 @@ function createSection(header: GroupHeader | null): Section {
       if (event.key === "Escape") {
         if (event.isComposing) return; // 조합 중 Esc 는 IME 조합 취소에 위임 (리뷰)
         event.preventDefault();
-        if (section.header != null) nameInput.value = section.header.group;
+        if (section.header != null) {
+          nameInput.value = section.header.group;
+          resizeTextarea(nameInput);
+        }
         return;
       }
       const delta = moveKeyDelta(event);
@@ -756,7 +765,7 @@ function createSection(header: GroupHeader | null): Section {
       reorderLines(nextLines);
     });
 
-    // 평시: ⠿ ▸ (배지) 이름 — trash 는 헤더 hover 시에만 표시 (우측 정렬 요소 없음, 사용자 확정)
+    // 평시: ⠿ ▸ (배지) 🗑 이름 — trash 상시 표시 (우측 정렬 요소 없음, 사용자 확정)
     headerEl.append(handleEl, toggleEl, countEl, trashEl, nameInput);
     sectionEl.appendChild(headerEl);
   }
@@ -873,7 +882,12 @@ function render(): void {
       // 헤더 표시 갱신 — 이름은 포커스 중(수정 보호)이 아니면 저장값으로 동기화 (spec §4.6)
       if (section.nameInput != null && part.header != null) {
         if (document.activeElement !== section.nameInput) {
-          section.nameInput.value = part.header.group;
+          const nameInput = section.nameInput;
+          nameInput.value = part.header.group;
+          // 새 섹션은 아직 미부착(scrollHeight 0) — 부착 후 재측정 (itemRowFor 와 동일 패턴)
+          queueMicrotask(() => {
+            resizeTextarea(nameInput);
+          });
         }
         const collapsed = isCollapsed(part.header);
         section.rootEl.classList.toggle("collapsed", collapsed);

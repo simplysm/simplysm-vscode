@@ -2,7 +2,8 @@
 
 body {
   margin: 0;
-  padding: 0.5em;
+  /* 하단 여백 예약 — 하단 고정 Undo 토스트가 마지막 행·입력칸을 가리지 않게 (리뷰) */
+  padding: 0.5em 0.5em 4em;
   color: var(--vscode-foreground);
   background: var(--vscode-editor-background);
   font-family: var(--vscode-editor-font-family);
@@ -156,7 +157,8 @@ body {
 
 .group-header {
   display: flex;
-  align-items: center;
+  /* 이름이 여러 줄로 감길 수 있어 첫 줄 기준 상단 정렬 (항목 행과 동일 패턴, 리뷰) */
+  align-items: flex-start;
   gap: 0.35em;
   padding: 0.35em 0.5em;
   /* 배경 블록 대신 얇은 구분선 — 좁은 폭에서 밀도를 해치지 않으면서 블록 시작을 표시 */
@@ -196,7 +198,8 @@ body {
   background: none;
   color: var(--vscode-descriptionForeground);
   cursor: pointer;
-  padding: 0;
+  /* 파괴적 버튼 — 인접 토글에서 히트영역 분리해 오클릭 방지 (.task-erase 와 일관, 리뷰) */
+  padding: 0.1em 0.25em;
   display: inline-flex;
   align-items: center;
 }
@@ -205,11 +208,14 @@ body {
   color: var(--vscode-errorForeground);
 }
 
-/* 그룹 이름 — 상시 편집 input, 헤더 배경에 녹아듦 (spec §4.7) */
+/* 그룹 이름 — 상시 편집 textarea(자동 높이), 헤더 배경에 녹아듦 (spec §4.7, 리뷰: 긴 이름 줄바꿈) */
 .group-name {
   flex: 1;
-  /* flex 자식 최소폭 해제 — input 기본 최소폭이 좁은 패널에서 가로 스크롤을 만듦 */
+  /* flex 자식 최소폭 해제 — 기본 최소폭이 좁은 패널에서 가로 스크롤을 만듦 */
   min-width: 0;
+  box-sizing: border-box;
+  resize: none;
+  overflow: hidden;
   border: none;
   outline: none;
   background: transparent;
@@ -218,6 +224,7 @@ body {
   font-weight: bold;
   padding: 0;
   margin: 0;
+  min-height: 1.2em;
 }
 
 .group-name:focus {
