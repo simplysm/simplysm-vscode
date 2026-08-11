@@ -35,35 +35,33 @@ body {
   flex-direction: column;
 }
 
-/* 경계선은 1px 로 보이고, 잡는 자리는 4px — hover 로 잡을 수 있음을 알린다. */
+/*
+ * 배치는 경계선 1px 만 차지한다 — 그 이상 차지하면 양옆 tab·화면이 선에서 떠 보인다.
+ * 잡는 자리는 ::before 를 양옆 pane 위에 3px 씩 겹쳐 7px 로 넓힌다 (VS Code sash 방식).
+ */
 .divider {
   position: relative;
-  flex: 0 0 4px;
+  z-index: 4;
+  flex: 0 0 1px;
+  /* 내장 터미널 분할선과 같은 색 — terminal.border 의 등록 기본값은 panel.border 다. */
+  background: var(--vscode-terminal-border, var(--vscode-panel-border, transparent));
 }
 
 .divider::before {
   content: "";
   position: absolute;
-  /* 내장 터미널 분할선과 같은 색 — terminal.border 의 등록 기본값은 panel.border 다. */
-  background: var(--vscode-terminal-border, var(--vscode-panel-border, transparent));
 }
 
 .split.horizontal > .divider::before {
-  top: 0;
-  bottom: 0;
-  left: 1.5px;
-  width: 1px;
+  inset: 0 -3px;
 }
 
 .split.vertical > .divider::before {
-  left: 0;
-  right: 0;
-  top: 1.5px;
-  height: 1px;
+  inset: -3px 0;
 }
 
-.divider:hover,
-.divider:active {
+.divider:hover::before,
+.divider:active::before {
   background: var(--vscode-sash-hoverBorder, transparent);
 }
 
@@ -233,7 +231,7 @@ body {
   min-height: 0;
   display: flex;
   /* 에뮬레이터가 칠하는 색과 같은 값 — 여백과 글자 격자 밖 자투리까지 한 면이 된다. */
-  background: var(--terminal-background, var(--vscode-panel-background));
+  background: var(--terminal-background, var(--vscode-editor-background));
 }
 
 /* 놓을 자리 미리 보기 — 가운데는 pane 전체, 네 방향은 그 절반을 덮는다. */

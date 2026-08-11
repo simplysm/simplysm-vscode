@@ -58,11 +58,10 @@ export function readColorPalette(): ColorPalette {
     return value;
   };
 
-  // 내장 터미널도 terminal.background 가 없으면 자기가 놓인 자리의 배경을 쓴다. 이 화면은 panel 에
-  // 있으므로 panel 배경이 그 자리 값이다 (근거: VS Code 1.127 설치본 — 터미널 배경 조회가
-  // `getColor(terminal.background) || getColor(<놓인 자리 배경>)` 순서). panel 배경은 등록
-  // 기본값이 있어 항상 채워져 온다.
-  const background = read("terminal-background") ?? requireColor("panel-background");
+  // 이 화면의 tab-bar 는 편집기 tab 색(tab.activeBackground — 대부분 테마에서 editor.background
+  // 유래)을 쓰므로, 몸통도 editor 배경을 따라야 활성 tab 이 몸통에 녹아든다. panel 배경을 쓰면
+  // 활성 tab 과 몸통 색이 갈린다. editor 배경은 등록 기본값이 있어 항상 채워져 온다.
+  const background = read("terminal-background") ?? requireColor("editor-background");
   const foreground = requireColor("terminal-foreground");
 
   const ansi = ansiColorNames.map((name) => read(`terminal-ansi${name}`));
