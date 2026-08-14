@@ -62,6 +62,11 @@ export class HistoryTreeProvider implements vscode.TreeDataProvider<HistoryNode>
     return [];
   }
 
+  /** reveal(선택 재설정)용 부모 해석 — id 기반 매칭이라 새 노드 객체여도 동작. */
+  getParent(node: HistoryNode): HistoryNode | undefined {
+    return node.kind === "entry" ? { kind: "snapshot", snapshot: node.snapshot } : undefined;
+  }
+
   getTreeItem(node: HistoryNode): vscode.TreeItem {
     const target = this.target;
     if (node.kind === "snapshot") {
@@ -71,6 +76,7 @@ export class HistoryTreeProvider implements vscode.TreeDataProvider<HistoryNode>
           ? vscode.TreeItemCollapsibleState.Collapsed
           : vscode.TreeItemCollapsibleState.None,
       );
+      item.id = `${node.snapshot.at}`;
       item.contextValue = "snapshot";
       if (target?.isFolder === true) {
         const count = this.entriesOf(target, node.snapshot).length;
@@ -84,6 +90,7 @@ export class HistoryTreeProvider implements vscode.TreeDataProvider<HistoryNode>
       ? node.entry.path.slice(prefix.length)
       : node.entry.path;
     const item = new vscode.TreeItem(label);
+    item.id = `${node.snapshot.at}:${node.entry.path}`;
     item.contextValue = "entry";
     if (target !== undefined) {
       const folder = vscode.workspace.getWorkspaceFolder(target.uri);

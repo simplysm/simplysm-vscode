@@ -2,7 +2,13 @@ import * as vscode from "vscode";
 import { RETENTION_MS, WorkspaceStores } from "./storage.ts";
 import { Recorder } from "./recorder.ts";
 import { HistoryTreeProvider } from "./history-tree.ts";
-import { openFolderChanges, openSnapshotDiff, registerHistoryContentProvider } from "./history-diff.ts";
+import {
+  openFolderChanges,
+  openFolderRangeChanges,
+  openSnapshotDiff,
+  openSnapshotRangeDiff,
+  registerHistoryContentProvider,
+} from "./history-diff.ts";
 import { rollbackFile, rollbackFolder } from "./rollback.ts";
 import { Scanner } from "./scanner.ts";
 import type { HistoryNode, HistoryTarget } from "./history-tree.ts";
@@ -28,6 +34,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const tree = new HistoryTreeProvider();
   const treeView = vscode.window.createTreeView("simplysm-local-history.view", {
     treeDataProvider: tree,
+    canSelectMany: true, // 범위선택 → 병합 diff
   });
 
   const errorText = (error: unknown): string =>
@@ -54,6 +61,7 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   let previousFocused = vscode.window.state.focused;
+  let previousSelection: readonly HistoryNode[] = []; // 비연속 선택 판별용 — 직전 선택과 비교해 새 클릭 항목을 찾는다
   context.subscriptions.push(
     // 스캔 트리거 2: 창 재포커스
     vscode.window.onDidChangeWindowState((windowState) => {
@@ -67,12 +75,40 @@ export function activate(context: vscode.ExtensionContext): void {
     recorder.onDidRecord(() => tree.refresh()),
     registerHistoryContentProvider(stores),
     // 클릭·↑↓ 키보드 탐색 공통 경로 — 선택 시점의 diff 를 즉시 갱신 (spec 열람 흐름 2)
+    // shift 범위선택(연속) = 구간 병합 diff. 띄엄띄엄 선택(ctrl)은 불허 — 마지막 클릭 항목 단일 선택으로 되돌린다
+    // ("선택 시점들의 변경만 합치기"는 상태 비교 구조상 표현 불가라 오해를 만들기 때문)
     treeView.onDidChangeSelection((event) => {
       const node = event.selection[0];
       const target = tree.getTarget();
+      const selection = event.selection;
+      const added = selection.filter((candidate) => !previousSelection.includes(candidate));
+      previousSelection = selection;
       if (node === undefined || target === undefined) return;
       const open = async (): Promise<void> => {
-        if (node.kind === "entry") {
+        if (selection.length >= 2) {
+          // 연속성 판정 — 선택된 고유 시각들이 루트 목록에서 빈틈없는 구간이어야 범위선택
+          const selectedAts = [...new Set(selection.map((selected) => selected.snapshot.at))].sort(
+            (a, b) => a - b,
+          );
+          const rootAts = (await tree.getChildren())
+            .map((root) => root.snapshot.at)
+            .sort((a, b) => a - b);
+          const betweenCount =
+            rootAts.indexOf(selectedAts.at(-1)!) - rootAts.indexOf(selectedAts[0]) + 1;
+          if (betweenCount !== selectedAts.length) {
+            // 비연속 — 마지막 클릭 항목만 남긴다 (ctrl+클릭 = 일반 클릭과 동일하게)
+            await treeView.reveal(added[0] ?? node, { select: true, focus: false });
+            return;
+          }
+          const sorted = [...selection].sort((a, b) => a.snapshot.at - b.snapshot.at);
+          const fromNode = sorted[0];
+          const toNode = sorted.at(-1)!;
+          if (target.isFolder) {
+            await openFolderRangeChanges(target, fromNode.snapshot.at, toNode.snapshot.at);
+          } else {
+            await openSnapshotRangeDiff(target, fromNode, toNode);
+          }
+        } else if (node.kind === "entry") {
           const fileTarget = fileTargetOf(target, node.entry.path);
           if (fileTarget !== undefined) await openSnapshotDiff(fileTarget, node.snapshot);
         } else if (target.isFolder) {
