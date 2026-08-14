@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.5 - 2026-08-14
+
+- Local History: shift-select a range of snapshots to see their changes merged into one diff
+
 ## 1.0.4 - 2026-08-10
 
 - Changelog tab now appears on the extension details page
