@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.6 - 2026-08-26
+
+- Local History: no longer fails with EMFILE when a file has thousands of snapshots
+
 ## 1.0.5 - 2026-08-14
 
 - Local History: shift-select a range of snapshots to see their changes merged into one diff
