@@ -184,16 +184,16 @@ export class HistoryStore {
   async listSnapshots(): Promise<readonly Snapshot[]> {
     if (this.snapshotsCache === undefined) {
       const fileNames = await fs.readdir(this.snapshotsDir);
-      const snapshots = await Promise.all(
-        fileNames
-          .filter((fileName) => fileName.endsWith(".json"))
-          .map(
-            async (fileName) =>
-              JSON.parse(
-                await fs.readFile(path.join(this.snapshotsDir, fileName), "utf8"),
-              ) as Snapshot,
-          ),
-      );
+      // 순차 읽기 — 병렬(Promise.all)로 전부 열면 스냅샷 수천 개에서 EMFILE 발생
+      const snapshots: Snapshot[] = [];
+      for (const fileName of fileNames) {
+        if (!fileName.endsWith(".json")) continue;
+        snapshots.push(
+          JSON.parse(
+            await fs.readFile(path.join(this.snapshotsDir, fileName), "utf8"),
+          ) as Snapshot,
+        );
+      }
       this.snapshotsCache = snapshots.sort((a, b) => b.at - a.at);
     }
     return this.snapshotsCache;

@@ -110,6 +110,8 @@ const visualSettings = {
 };
 
 // 실사용 외관 재현에 필요한 확장 — 로컬 설치본에서 demo extensionsDir 로 복사.
+// 외관은 판정(DOM 단언)과 무관하므로 없으면 경고 후 기본 외관으로 진행한다.
+// 단, README 미디어 캡처(README_MEDIA=1)는 스크린샷 자체가 산출물이라 필수 — 없으면 실패.
 const visualExtensionIds = ["vscode-icons-team.vscode-icons", "catppuccin.catppuccin-vsc"];
 
 function copyVisualExtensions(extensionsDir: string): void {
@@ -121,9 +123,13 @@ function copyVisualExtensions(extensionsDir: string): void {
           .filter((dirName) => dirName.startsWith(`${extensionId}-`))
       : [];
     if (candidates.length === 0) {
-      throw new Error(
-        `데모 시각 재현용 확장이 로컬 VS Code 에 없음: ${extensionId} — 설치 후 재실행 필요`,
-      );
+      if (process.env["README_MEDIA"] === "1") {
+        throw new Error(
+          `데모 시각 재현용 확장이 로컬 VS Code 에 없음: ${extensionId} — 설치 후 재실행 필요`,
+        );
+      }
+      console.warn(`[demo] 시각 재현용 확장 없음 — 기본 외관으로 진행: ${extensionId}`);
+      continue;
     }
     const latestDirName = candidates.sort().at(-1)!;
     const destDir = path.join(extensionsDir, latestDirName);
