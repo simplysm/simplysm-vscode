@@ -145,6 +145,8 @@ const displayOptions = new DisplayOptionsSource((options) => {
   rootElement.style.setProperty("--terminal-background", options.colors.background);
   // tab 높이는 workbench 의 density 설정에서 온 값이다.
   rootElement.style.setProperty("--tab-height", `${options.tabHeight}px`);
+  // modern UI 에서는 에디터 tab 이 칩 모양이라 이쪽 tab 도 같은 모양으로 그린다.
+  rootElement.classList.toggle("modern-tabs", options.modernTabs);
   for (const tab of tabs.values()) tab.screen?.applyOptions(options);
 });
 

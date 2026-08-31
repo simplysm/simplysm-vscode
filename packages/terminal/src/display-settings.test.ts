@@ -18,6 +18,7 @@ const schemaDefaults: Record<string, unknown> = {
   "terminal.integrated.scrollback": 1000,
   "terminal.integrated.gpuAcceleration": "auto",
   "window.density.editorTabHeight": "default",
+  "workbench.experimental.modernUI": false,
 };
 
 function createReader(overrides: Record<string, unknown> = {}) {
@@ -50,12 +51,28 @@ test("각 표시 설정 키가 대응 값으로 옮겨진다", () => {
     scrollback: 5000,
     gpuAcceleration: "auto",
     tabHeight: 35,
+    modernTabs: false,
   } satisfies DisplaySettings);
 });
 
 test("window.density.editorTabHeight 가 compact 면 tab 높이가 compact 수치가 된다", () => {
   const { read } = createReader({ "window.density.editorTabHeight": "compact" });
   assert.equal(readDisplaySettings(read).tabHeight, 22);
+});
+
+test("modern UI 가 켜지면 modernTabs 와 함께 tab 높이도 modern 수치가 된다", () => {
+  const { read } = createReader({ "workbench.experimental.modernUI": true });
+  const settings = readDisplaySettings(read);
+  assert.equal(settings.modernTabs, true);
+  assert.equal(settings.tabHeight, 32);
+});
+
+test("modern UI + compact 밀도는 modern compact 수치가 된다", () => {
+  const { read } = createReader({
+    "workbench.experimental.modernUI": true,
+    "window.density.editorTabHeight": "compact",
+  });
+  assert.equal(readDisplaySettings(read).tabHeight, 28);
 });
 
 test("빈 글꼴 이름은 기본값으로 채우지 않고 결측으로 전달한다", () => {

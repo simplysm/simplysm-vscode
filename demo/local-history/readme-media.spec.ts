@@ -2,7 +2,7 @@
 // 정적 스크린샷 1장: Show History 트리뷰 + 내장 diff 에디터가 함께 보이는 화면.
 import fs from "node:fs";
 import path from "node:path";
-import { expect, retryAction, runCommand, runResultsDir, test, workspaceDir } from "../fixtures.ts";
+import { expect, retryAction, runResultsDir, test, workspaceDir } from "../fixtures.ts";
 import { historyPaneOf, prepareRecording } from "./history-utils.ts";
 
 test.skip(process.env["README_MEDIA"] !== "1", "README 미디어 캡처 전용 (README_MEDIA=1)");

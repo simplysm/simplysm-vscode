@@ -225,6 +225,71 @@ body {
   color: var(--vscode-foreground);
 }
 
+/*
+ * modern UI(workbench.experimental.modernUI) — 에디터 tab 과 같은 칩 모양.
+ * 수치·색 공식은 VS Code 1.129 workbench 의 style-override 규칙 그대로:
+ * 칩 배경·글자 = foreground 혼합(비율은 다크·라이트가 다름), radius = cornerRadius-small
+ * (오른쪽은 +4px), 칩 사이 간격 = 투명 border-right 4px(background-clip 으로 배경에서 제외).
+ * modern 규칙은 그룹 포커스를 구분하지 않으므로 .pane.focused 도 같은 색으로 덮는다.
+ */
+.modern-tabs .tab-bar {
+  box-sizing: border-box;
+  padding: 4px 0 4px 4px;
+  /* 탭바와 몸통이 한 면(island)이어야 한다 — 몸통과 같은 색으로 잇는다. */
+  background: var(--terminal-background, var(--vscode-editor-background));
+}
+
+.modern-tabs .tab-label,
+.modern-tabs .pane.focused .tab-label {
+  padding: 0 4px 0 8px;
+  border-right: var(--vscode-spacing-size40, 4px) solid transparent;
+  border-radius: var(--vscode-cornerRadius-small, 4px);
+  border-top-right-radius: calc(
+    var(--vscode-cornerRadius-small, 4px) + var(--vscode-spacing-size40, 4px)
+  );
+  border-bottom-right-radius: calc(
+    var(--vscode-cornerRadius-small, 4px) + var(--vscode-spacing-size40, 4px)
+  );
+  background: color-mix(in srgb, var(--vscode-foreground) 5%, transparent);
+  background-clip: padding-box;
+  color: color-mix(in srgb, var(--vscode-foreground) 50%, transparent);
+  font-size: var(--vscode-bodyFontSize-small, 12px);
+  font-weight: var(--vscode-fontWeight-semiBold, 600);
+}
+
+.modern-tabs .tab-label:not(.active):hover,
+.modern-tabs .pane.focused .tab-label:not(.active):hover {
+  background: color-mix(in srgb, var(--vscode-foreground) 8%, transparent);
+  background-clip: padding-box;
+  color: color-mix(in srgb, var(--vscode-foreground) 50%, transparent);
+}
+
+.modern-tabs .tab-label.active,
+.modern-tabs .pane.focused .tab-label.active {
+  background: color-mix(in srgb, var(--vscode-foreground) 18%, transparent);
+  background-clip: padding-box;
+  color: var(--vscode-foreground);
+  box-shadow: none;
+}
+
+body.vscode-light .modern-tabs .tab-label,
+body.vscode-light .modern-tabs .pane.focused .tab-label {
+  background: color-mix(in srgb, var(--vscode-foreground) 4%, transparent);
+  background-clip: padding-box;
+}
+
+body.vscode-light .modern-tabs .tab-label:not(.active):hover,
+body.vscode-light .modern-tabs .pane.focused .tab-label:not(.active):hover {
+  background: color-mix(in srgb, var(--vscode-foreground) 6%, transparent);
+  background-clip: padding-box;
+}
+
+body.vscode-light .modern-tabs .tab-label.active,
+body.vscode-light .modern-tabs .pane.focused .tab-label.active {
+  background: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
+  background-clip: padding-box;
+}
+
 .pane-body {
   position: relative;
   flex: 1 1 auto;

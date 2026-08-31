@@ -20,9 +20,16 @@ export interface DisplaySettings {
   /**
    * tab 높이(px). window.density.editorTabHeight 를 따른다 — webview 는 workbench 가
    * 에디터 tab 에 넣는 CSS 변수를 받지 못해 여기서 수치로 만든다.
-   * (근거: VS Code 1.127 실측 — EDITOR_TAB_HEIGHT = { normal: 35, compact: 22 })
+   * (근거: VS Code 1.127 실측 — EDITOR_TAB_HEIGHT = { normal: 35, compact: 22 }.
+   *  modern UI 는 탭바 자체가 낮다 — 1.129 실측: normal: 32, compact: 28)
    */
   readonly tabHeight: number;
+  /**
+   * modern UI(workbench.experimental.modernUI) 가 켜져 있는가. webview 는 이 설정을 감지할
+   * 수단이 없어(주입 CSS 변수가 on/off 동일 — 1.129 실측) 확장 호스트가 값을 넘긴다.
+   * 켜지면 tab 을 에디터의 칩 모양으로 그린다.
+   */
+  readonly modernTabs: boolean;
 }
 
 /** 설정 하나를 읽는 창구. VS Code 설정은 지정하지 않은 키에도 스키마 기본값을 돌려준다. */
@@ -40,6 +47,9 @@ export function readDisplaySettings(read: SettingsReader): DisplaySettings {
   // 비어 있으면 없음으로 둔다. 여기서 값을 지어내면 "설정 안 함" 과 "그 값을 지정함" 이 뭉개진다.
   const fontFamily = pick<string | undefined>("fontFamily");
 
+  const modernTabs = read("workbench.experimental.modernUI") === true;
+  const compact = read("window.density.editorTabHeight") === "compact";
+
   return {
     ...(fontFamily == null || fontFamily.length === 0 ? {} : { fontFamily }),
     fontSize: pick("fontSize"),
@@ -49,7 +59,8 @@ export function readDisplaySettings(read: SettingsReader): DisplaySettings {
     lineHeight: pick("lineHeight"),
     scrollback: pick("scrollback"),
     gpuAcceleration: pick("gpuAcceleration"),
-    tabHeight: read("window.density.editorTabHeight") === "compact" ? 22 : 35,
+    tabHeight: modernTabs ? (compact ? 28 : 32) : compact ? 22 : 35,
+    modernTabs,
   };
 }
 

@@ -99,10 +99,11 @@ class TerminalPanel implements vscode.WebviewViewProvider {
     this.#refreshShellKeyContexts();
     this.#disposables.push(
       vscode.workspace.onDidChangeConfiguration((event) => {
-        // window.density 는 tab 높이의 출처다 — 표시 설정과 같은 길로 내려간다.
+        // window.density 는 tab 높이, modernUI 는 tab 모양의 출처다 — 표시 설정과 같은 길로 내려간다.
         if (
           !event.affectsConfiguration("terminal.integrated") &&
-          !event.affectsConfiguration("window.density")
+          !event.affectsConfiguration("window.density") &&
+          !event.affectsConfiguration("workbench.experimental.modernUI")
         ) {
           return;
         }
