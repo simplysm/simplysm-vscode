@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.7 - 2026-08-31
+
+- Match terminal tab style with the VS Code modern UI preview
+
 ## 1.0.6 - 2026-08-11
 
 - Split divider now matches VS Code's built-in terminal: a 1px line with a wider grab area, and the terminal body uses the editor background so the active tab blends in
