@@ -86,8 +86,10 @@ export async function prepareRecording(
     }
   }
   if (!warmedUp) throw new Error("VS Code 파일 워처가 기동되지 않아 시연을 진행할 수 없음");
-  await workbox.waitForTimeout(2_000); // 웜업 변경의 debounce 플러시 대기
-  const baseline = await historyPane.getByRole("treeitem").count();
-  expect(baseline).toBeGreaterThanOrEqual(1); // 웜업 변경이 기록됐어야 함
-  return baseline;
+  // 웜업 변경 기록 대기 — flush(debounce)·트리 렌더가 늦을 수 있어 즉시 count 가 아닌 poll 로 단언
+  await expect
+    .poll(() => historyPane.getByRole("treeitem").count(), { timeout: 15_000 })
+    .toBeGreaterThanOrEqual(1);
+  await workbox.waitForTimeout(2_000); // 추가 기록 정착 대기 — 반환값은 안정된 baseline 이어야 함
+  return await historyPane.getByRole("treeitem").count();
 }

@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { RETENTION_MS, WorkspaceStores } from "./storage.ts";
+import { Excludes } from "./exclude.ts";
 import { Recorder } from "./recorder.ts";
 import { HistoryTreeProvider } from "./history-tree.ts";
 import {
@@ -30,8 +31,9 @@ function fileTargetOf(target: HistoryTarget, entryPath: string): HistoryTarget |
 export function activate(context: vscode.ExtensionContext): void {
   const logger = vscode.window.createOutputChannel("Simplysm Local History", { log: true });
   const stores = new WorkspaceStores(context.globalStorageUri.fsPath);
-  const recorder = new Recorder(stores, logger);
-  const tree = new HistoryTreeProvider();
+  const excludes = new Excludes();
+  const recorder = new Recorder(stores, excludes, logger);
+  const tree = new HistoryTreeProvider(logger);
   const treeView = vscode.window.createTreeView("simplysm-local-history.view", {
     treeDataProvider: tree,
     canSelectMany: true, // 범위선택 → 병합 diff
@@ -39,7 +41,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const errorText = (error: unknown): string =>
     error instanceof Error ? error.message : String(error);
-  const scanner = new Scanner(stores, recorder, (error) => {
+  const scanner = new Scanner(stores, recorder, excludes, (error) => {
     void vscode.window.showErrorMessage(
       vscode.l10n.t("Local History failed to scan: {0}", errorText(error)),
     );
@@ -48,11 +50,15 @@ export function activate(context: vscode.ExtensionContext): void {
   // 스캔 트리거 1: 기동 (spec 스캔 트리거)
   void scanner.scan();
 
-  // 보존 기한 초과 정리 — 기동 시 백그라운드 (spec 저장 구조)
+  // 보존 기한 초과·제외 대상 정리 — 기동 시 백그라운드 (spec 저장 구조)
   void (async () => {
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
       const resolved = await stores.resolve(folder.uri);
-      if (resolved !== undefined) await resolved.store.prune(Date.now() - RETENTION_MS);
+      if (resolved !== undefined) {
+        await resolved.store.prune(Date.now() - RETENTION_MS, (entryPath) =>
+          excludes.isExcluded(folder.uri, entryPath),
+        );
+      }
     }
   })().catch((error: unknown) => {
     void vscode.window.showErrorMessage(
@@ -70,6 +76,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (regained) void scanner.scan();
     }),
     logger,
+    excludes,
     recorder,
     treeView,
     recorder.onDidRecord(() => tree.refresh()),

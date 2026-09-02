@@ -37,6 +37,9 @@
   "scripts": {
     "build": "node scripts/build.mjs"
   },
+  "devDependencies": {
+    "minimatch": "^10.1.1"
+  },
   "contributes": {
     "commands": [
       {
@@ -81,6 +84,26 @@
           "when": "simplysm-local-history.active"
         }
       ]
+    },
+    "configuration": {
+      "title": "Simplysm Local History",
+      "properties": {
+        "simplysm-local-history.exclude": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "scope": "resource",
+          "default": {
+            "**/.git": true,
+            "**/node_modules": true,
+            "**/dist": true,
+            "**/out": true,
+            "**/.vscode-test": true
+          },
+          "description": "%config.exclude.description%"
+        }
+      }
     }
   },
   "activationEvents": [

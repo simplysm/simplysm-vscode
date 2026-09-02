@@ -1,11 +1,9 @@
 import * as vscode from "vscode";
+import type { Excludes } from "./exclude.ts";
 import type { HistoryStore, IndexEntry, WorkspaceStores } from "./storage.ts";
 
 // 이벤트 폭풍(git checkout, npm install 등) 대비 debounce — 창에 묶인 변경 = 스냅샷 1개 (spec 프로세스 1)
 const DEBOUNCE_MS = 700;
-
-// 자체 기본 제외(생성물) — files.watcherExclude 는 VS Code 공유 watcher 가 이미 존중 (spec 저장 구조)
-const EXCLUDED_SEGMENTS = new Set([".git", "node_modules", "dist", "out", ".vscode-test"]);
 
 /**
  * 백그라운드 기록기 (spec 프로세스 1) — 공유 watcher 로 생성·수정·삭제를 잡아
@@ -28,9 +26,11 @@ export class Recorder implements vscode.Disposable {
   readonly onDidRecord = this.onDidRecordEmitter.event;
 
   private readonly logger: vscode.LogOutputChannel;
+  private readonly excludes: Excludes;
 
-  constructor(stores: WorkspaceStores, logger: vscode.LogOutputChannel) {
+  constructor(stores: WorkspaceStores, excludes: Excludes, logger: vscode.LogOutputChannel) {
     this.stores = stores;
+    this.excludes = excludes;
     this.logger = logger;
     // 자체 watcher 기동 금지 — VS Code 공유 watcher 사용 (spec 프로세스 1)
     const watcher = vscode.workspace.createFileSystemWatcher("**/*");
@@ -50,7 +50,7 @@ export class Recorder implements vscode.Disposable {
       // 진단용 — 기본 로그 레벨(info)에서는 숨겨지고, 사용자가 레벨을 올리면 보인다
       this.logger.debug(`event ${deleted ? "delete" : "change"}: ${uri.toString()}`);
       const resolved = await this.stores.resolve(uri);
-      if (resolved === undefined || isExcluded(resolved.relPath)) return;
+      if (resolved === undefined || this.excludes.isExcluded(uri, resolved.relPath)) return;
       if (deleted) {
         // 세션 중 기록된 적 없는 파일의 삭제 — 미기동 기간 삭제는 스캔 안전망 소관
         if (!this.lastHashes.get(resolved.store)?.has(resolved.relPath)) return;
@@ -90,7 +90,7 @@ export class Recorder implements vscode.Disposable {
 
   private async captureFileRename(oldUri: vscode.Uri, newUri: vscode.Uri): Promise<void> {
     const resolvedNew = await this.stores.resolve(newUri);
-    if (resolvedNew === undefined || isExcluded(resolvedNew.relPath)) return;
+    if (resolvedNew === undefined || this.excludes.isExcluded(newUri, resolvedNew.relPath)) return;
     const resolvedOld = await this.stores.resolve(oldUri);
     let content: Uint8Array;
     try {
@@ -209,9 +209,4 @@ export class Recorder implements vscode.Disposable {
     clearTimeout(this.timer);
     for (const disposable of this.disposables) disposable.dispose();
   }
-}
-
-/** 자체 기본 제외 판정 — Recorder 와 Scanner 공통. */
-export function isExcluded(relPath: string): boolean {
-  return relPath.split("/").some((segment) => EXCLUDED_SEGMENTS.has(segment));
 }

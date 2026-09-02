@@ -38,7 +38,11 @@ importers:
 
   packages/focus-refresh: {}
 
-  packages/local-history: {}
+  packages/local-history:
+    devDependencies:
+      minimatch:
+        specifier: ^10.1.1
+        version: 10.2.5
 
   packages/tasks:
     devDependencies:

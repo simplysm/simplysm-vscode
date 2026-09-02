@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { hashOf } from "./storage.ts";
-import { isExcluded } from "./recorder.ts";
+import type { Excludes } from "./exclude.ts";
 import type { Recorder } from "./recorder.ts";
 import type { HistoryStore, IndexEntry, WorkspaceStores } from "./storage.ts";
 
@@ -15,13 +15,20 @@ const THROTTLE_MS = 30_000;
 export class Scanner {
   private readonly stores: WorkspaceStores;
   private readonly recorder: Recorder;
+  private readonly excludes: Excludes;
   private readonly onError: (error: unknown) => void;
   private lastScanAt = 0;
   private scanning = false;
 
-  constructor(stores: WorkspaceStores, recorder: Recorder, onError: (error: unknown) => void) {
+  constructor(
+    stores: WorkspaceStores,
+    recorder: Recorder,
+    excludes: Excludes,
+    onError: (error: unknown) => void,
+  ) {
     this.stores = stores;
     this.recorder = recorder;
+    this.excludes = excludes;
     this.onError = onError;
   }
 
@@ -39,14 +46,18 @@ export class Scanner {
         await this.walk(folder.uri, folder.uri, resolved.store, index, seen, touches);
         // 색인에 있는데 디스크에 없음 = 미기동 기간 삭제
         for (const relPath of index.keys()) {
-          if (!seen.has(relPath)) {
-            this.recorder.enqueue(
-              resolved.store,
-              relPath,
-              null,
-              vscode.Uri.joinPath(folder.uri, relPath),
-            );
+          if (seen.has(relPath)) continue;
+          if (this.excludes.isExcluded(folder.uri, relPath)) {
+            // 제외 규칙 변경 전에 기록된 경로 — 삭제 기록이 아니라 색인만 정리
+            touches.set(relPath, null);
+            continue;
           }
+          this.recorder.enqueue(
+            resolved.store,
+            relPath,
+            null,
+            vscode.Uri.joinPath(folder.uri, relPath),
+          );
         }
         if (touches.size > 0) await resolved.store.updateIndex(touches);
       }
@@ -68,7 +79,7 @@ export class Scanner {
     for (const [name, type] of await vscode.workspace.fs.readDirectory(dir)) {
       const uri = vscode.Uri.joinPath(dir, name);
       const relPath = uri.path.slice(root.path.length + 1);
-      if (isExcluded(relPath)) continue;
+      if (this.excludes.isExcluded(uri, relPath)) continue;
       if ((type & vscode.FileType.SymbolicLink) !== 0) continue; // 순환 방지
       if ((type & vscode.FileType.Directory) !== 0) {
         await this.walk(root, uri, store, index, seen, touches);

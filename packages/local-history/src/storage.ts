@@ -37,6 +37,8 @@ export class HistoryStore {
   private index: Map<string, IndexEntry> | undefined;
   /** 스냅샷 목록 메모리 캐시(최신순) — 쓰기 주체가 이 인스턴스뿐이라 save/prune 때만 갱신하면 된다. */
   private snapshotsCache: Snapshot[] | undefined;
+  /** 캐시 세대 — 적재 진행 중 prune·save 로 디스크가 바뀌면 올려서, 낡은 적재 결과가 캐시로 굳는 것을 막는다. */
+  private cacheGeneration = 0;
 
   constructor(storageRoot: string, workspaceFolderPath: string) {
     const workspaceId = createHash("sha1").update(workspaceFolderPath).digest("hex");
@@ -72,9 +74,15 @@ export class HistoryStore {
     await fs.writeFile(this.indexPath, JSON.stringify(Object.fromEntries(index)));
   }
 
-  async init(): Promise<void> {
-    await fs.mkdir(this.blobsDir, { recursive: true });
-    await fs.mkdir(this.snapshotsDir, { recursive: true });
+  private initPromise: Promise<void> | undefined;
+
+  /** 저장 디렉터리 생성 — 멱등. 동시 호출이 같은 1회 수행을 기다린다. */
+  init(): Promise<void> {
+    this.initPromise ??= (async () => {
+      await fs.mkdir(this.blobsDir, { recursive: true });
+      await fs.mkdir(this.snapshotsDir, { recursive: true });
+    })();
+    return this.initPromise;
   }
 
   /** 내용을 content-addressed blob 으로 저장하고 해시를 반환. 같은 내용이 이미 있으면 참조만. */
@@ -82,8 +90,12 @@ export class HistoryStore {
     const hash = hashOf(content);
     const blobPath = path.join(this.blobsDir, hash.slice(0, 2), hash.slice(2));
     try {
-      await fs.access(blobPath);
-      return hash; // 동일 내용 blob 존재 — 중복 저장 방지 (content-addressed)
+      // 동일 내용 blob 존재 — 중복 저장 방지 (content-addressed).
+      // mtime 을 갱신해 두면, 동시 진행 중인 prune 이 아직 flush 전인 이 참조를
+      // 미참조로 오판해도 recentGuard 가 삭제를 막는다.
+      const now = new Date();
+      await fs.utimes(blobPath, now, now);
+      return hash;
     } catch {
       // 없음 — 새로 저장
     }
@@ -142,30 +154,45 @@ export class HistoryStore {
       path.join(this.snapshotsDir, `${snapshot.at}.json`),
       JSON.stringify(snapshot),
     );
-    this.snapshotsCache?.unshift(snapshot); // at = 현재 시각 — 항상 최신이라 맨 앞 삽입
+    if (this.snapshotsCache !== undefined) {
+      this.snapshotsCache.unshift(snapshot); // at = 현재 시각 — 항상 최신이라 맨 앞 삽입
+    } else {
+      this.cacheGeneration++; // 적재 진행 중이면 그 결과에 이 스냅샷이 빠져 있을 수 있음 — 설치 무효화
+    }
     return snapshot;
   }
 
   /**
-   * 보존 기한 초과 스냅샷·미참조 blob 정리 (spec 저장 구조 — prune, 기동 시 백그라운드).
-   * `cutoff` 이전 스냅샷을 지우고, 남은 스냅샷이 참조하지 않는 blob 을 지운다.
+   * 스냅샷·blob 정리 (spec 저장 구조 — prune, 기동 시 백그라운드).
+   * - `cutoff` 이전 스냅샷 삭제 (보존 기한)
+   * - 남은 스냅샷에서 `isExcluded` 에 걸리는 entry 제거(제외 규칙 변경의 소급 정리) — 빈 스냅샷은 삭제
+   * - 남은 스냅샷이 참조하지 않는 blob 삭제
    */
-  async prune(cutoff: number): Promise<void> {
+  async prune(cutoff: number, isExcluded: (entryPath: string) => boolean): Promise<void> {
     const referenced = new Set<string>();
+    let mutated = false;
     for (const fileName of await fs.readdir(this.snapshotsDir)) {
       if (!fileName.endsWith(".json")) continue;
       const snapshotPath = path.join(this.snapshotsDir, fileName);
       const snapshot = JSON.parse(await fs.readFile(snapshotPath, "utf8")) as Snapshot;
-      if (snapshot.at < cutoff) {
+      const kept =
+        snapshot.at < cutoff ? [] : snapshot.entries.filter((entry) => !isExcluded(entry.path));
+      if (kept.length === 0) {
         await fs.rm(snapshotPath);
-        if (this.snapshotsCache !== undefined) {
-          this.snapshotsCache = this.snapshotsCache.filter((cached) => cached.at !== snapshot.at);
-        }
+        mutated = true;
         continue;
       }
-      for (const entry of snapshot.entries) {
+      if (kept.length !== snapshot.entries.length) {
+        await fs.writeFile(snapshotPath, JSON.stringify({ ...snapshot, entries: kept }));
+        mutated = true;
+      }
+      for (const entry of kept) {
         if (entry.hash !== null) referenced.add(entry.hash);
       }
+    }
+    if (mutated) {
+      this.cacheGeneration++; // 진행 중이던 적재 결과도 무효 — stale 설치 방지
+      this.snapshotsCache = undefined; // 디스크가 진실 — 다음 접근 시 재적재
     }
     // 최근 blob 은 스냅샷 flush(debounce) 대기 중일 수 있다 — 1시간 이내 생성분은 참조 오판 방지로 보존
     const recentGuard = Date.now() - 60 * 60 * 1000;
@@ -182,21 +209,27 @@ export class HistoryStore {
 
   /** 전체 스냅샷 목록, 최신순 — 최초 접근 시 디스크에서 적재 후 메모리 캐시. */
   async listSnapshots(): Promise<readonly Snapshot[]> {
-    if (this.snapshotsCache === undefined) {
-      const fileNames = await fs.readdir(this.snapshotsDir);
-      // 순차 읽기 — 병렬(Promise.all)로 전부 열면 스냅샷 수천 개에서 EMFILE 발생
-      const snapshots: Snapshot[] = [];
-      for (const fileName of fileNames) {
-        if (!fileName.endsWith(".json")) continue;
-        snapshots.push(
-          JSON.parse(
-            await fs.readFile(path.join(this.snapshotsDir, fileName), "utf8"),
-          ) as Snapshot,
-        );
+    if (this.snapshotsCache !== undefined) return this.snapshotsCache;
+    const generation = this.cacheGeneration;
+    const fileNames = await fs.readdir(this.snapshotsDir);
+    // 순차 읽기 — 병렬(Promise.all)로 전부 열면 스냅샷 수천 개에서 EMFILE 발생
+    const snapshots: Snapshot[] = [];
+    for (const fileName of fileNames) {
+      if (!fileName.endsWith(".json")) continue;
+      let raw: string;
+      try {
+        raw = await fs.readFile(path.join(this.snapshotsDir, fileName), "utf8");
+      } catch (error) {
+        // 적재 중 동시 prune 이 지운 파일 — 삭제가 진실이므로 건너뛴다
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        throw error;
       }
-      this.snapshotsCache = snapshots.sort((a, b) => b.at - a.at);
+      snapshots.push(JSON.parse(raw) as Snapshot);
     }
-    return this.snapshotsCache;
+    snapshots.sort((a, b) => b.at - a.at);
+    // 적재 중 디스크가 바뀌었으면(세대 변경) 이 결과를 캐시로 설치하지 않는다 — stale 고착 방지
+    if (generation === this.cacheGeneration) this.snapshotsCache = snapshots;
+    return snapshots;
   }
 }
 
@@ -246,9 +279,11 @@ export class WorkspaceStores {
     let store = this.stores.get(folderKey);
     if (store === undefined) {
       store = new HistoryStore(this.storageRoot, folder.uri.fsPath);
-      await store.init();
+      // await 전에 등록 — 동시 resolve 가 폴더 하나에 인스턴스 2개를 만들면
+      // 기록과 열람이 서로 다른 인스턴스(메모리 캐시)를 잡아 목록이 빈 채 고착된다
       this.stores.set(folderKey, store);
     }
+    await store.init();
     const relPath = path.relative(folder.uri.fsPath, uri.fsPath).replaceAll("\\", "/");
     return { store, relPath };
   }

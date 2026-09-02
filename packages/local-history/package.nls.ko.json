@@ -2,5 +2,6 @@
   "description": "로컬 파일 이력을 기록하고 파일·폴더를 과거 상태로 복원 — WebStorm 의 Local History 와 동일",
   "command.showHistory.title": "이력 보기",
   "command.rollback.title": "이 상태로 되돌리기",
-  "view.name": "로컬 이력"
+  "view.name": "로컬 이력",
+  "config.exclude.description": "로컬 이력에서 제외할 glob 패턴 — files.exclude, files.watcherExclude 에 더해 적용됩니다. 기동 시 현재 패턴에 걸리는 항목은 기존 이력에서도 제거됩니다."
 }

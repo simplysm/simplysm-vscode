@@ -18,9 +18,15 @@ export class HistoryTreeProvider implements vscode.TreeDataProvider<HistoryNode>
   private readonly onDidChangeEmitter = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this.onDidChangeEmitter.event;
   private target: HistoryTarget | undefined;
+  private readonly logger: vscode.LogOutputChannel;
+
+  constructor(logger: vscode.LogOutputChannel) {
+    this.logger = logger;
+  }
 
   setTarget(target: HistoryTarget): void {
     this.target = target;
+    this.logger.debug(`tree setTarget: ${target.relPath} (folder=${target.isFolder})`);
     this.onDidChangeEmitter.fire();
   }
 
@@ -29,6 +35,7 @@ export class HistoryTreeProvider implements vscode.TreeDataProvider<HistoryNode>
   }
 
   refresh(): void {
+    this.logger.debug("tree refresh");
     this.onDidChangeEmitter.fire();
   }
 
@@ -40,16 +47,22 @@ export class HistoryTreeProvider implements vscode.TreeDataProvider<HistoryNode>
 
   async getChildren(element?: HistoryNode): Promise<HistoryNode[]> {
     const target = this.target;
-    if (target === undefined) return [];
+    if (target === undefined) {
+      this.logger.debug("tree getChildren: target 없음 → []");
+      return [];
+    }
     if (element === undefined) {
       if (target.isFolder) {
         const snapshots = await target.store.listSnapshots();
-        return snapshots
+        const roots = snapshots
           .filter((snapshot) => this.entriesOf(target, snapshot).length > 0)
-          .map((snapshot) => ({ kind: "snapshot", snapshot }));
+          .map((snapshot) => ({ kind: "snapshot" as const, snapshot }));
+        this.logger.debug(`tree getChildren(root, folder): ${roots.length}개`);
+        return roots;
       }
       // 파일 대상 — rename 체인을 따라 과거 경로 이력까지 나열
       const refs = await target.store.listFileSnapshots(target.relPath);
+      this.logger.debug(`tree getChildren(root, file=${target.relPath}): ${refs.length}개`);
       return refs.map((ref) => ({ kind: "snapshot", snapshot: ref.snapshot, pathAt: ref.path }));
     }
     if (element.kind === "snapshot" && target.isFolder) {
