@@ -40,7 +40,16 @@ noticeActionElement.id = "notice-action";
 noticeActionElement.hidden = true;
 noticeActionElement.addEventListener("click", () => post({ type: "newTab" }));
 noticeElement.append(noticeTextElement, noticeActionElement);
-rootElement.append(tabsElement, noticeElement);
+// 서비스가 죽었을 때 화면 위에 놓이는 bar — 죽은 화면을 가리지 않고 사실과 다시 시작 수단만 보인다.
+const serviceLostElement = document.createElement("div");
+serviceLostElement.id = "service-lost";
+serviceLostElement.hidden = true;
+const serviceLostTextElement = document.createElement("p");
+const serviceLostActionElement = document.createElement("button");
+serviceLostActionElement.id = "service-lost-action";
+serviceLostActionElement.addEventListener("click", () => post({ type: "restartService" }));
+serviceLostElement.append(serviceLostTextElement, serviceLostActionElement);
+rootElement.append(serviceLostElement, tabsElement, noticeElement);
 document.body.appendChild(rootElement);
 
 /** 화면에 그려 둔 자리 하나. 세션이 붙기 전에는 시작 화면만 있다. */
@@ -263,6 +272,7 @@ function attachScreen(tab: Tab, session: ViewSession): void {
   const screen = new TerminalScreen(displayed, {
     onInput: (data, binary) => post({ type: "input", sessionId, data, binary }),
     onResize: (rows, cols) => post({ type: "resize", sessionId, rows, cols }),
+    onOutputHandled: (bytes) => post({ type: "outputAck", sessionId, bytes }),
     onCopy: (text) => post({ type: "copyText", text }),
     onReadClipboard: () => post({ type: "readClipboard", sessionId }),
     onReadClipboardText: readClipboardText,
@@ -270,6 +280,9 @@ function attachScreen(tab: Tab, session: ViewSession): void {
     onOpenFile: (link) => post({ type: "openFile", cwd: session.cwd, ...link }),
   });
   screen.applyBlockedShellKeys(blockedShellKeys);
+  // 이미 끝난 세션이면 크기를 재기 전에 끝난 것으로 둔다. 재기가 먼저면 크기 알림이 셸 없는
+  // 세션으로 날아가 실패로 되돌아온다.
+  if (session.exitedText != null) screen.markExited(session.exitedText);
   tab.screen = screen;
   tab.rootElement.appendChild(screen.rootElement);
   screen.fit();
@@ -505,6 +518,13 @@ function handleMessage(message: ExtensionToWebview): void {
     case "notice":
       extensionNotice = message.notice;
       renderNotice();
+      return;
+    case "serviceLost":
+      if (message.banner != null) {
+        setText(serviceLostTextElement, message.banner.text);
+        setText(serviceLostActionElement, message.banner.action);
+      }
+      serviceLostElement.hidden = message.banner == null;
       return;
     case "state":
       renderState(message);

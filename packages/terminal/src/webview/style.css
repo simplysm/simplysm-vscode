@@ -548,7 +548,31 @@ body.vscode-light .modern-tabs .pane.focused .tab-label.active {
   max-width: 42em;
 }
 
-#notice-action {
+/* 서비스 사망 bar — 화면 흐름 위에 얹혀 죽은 화면을 가리지 않는다. */
+#service-lost {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  /* workbench 의 배너(banner.*)와 같은 색 — 경고 입력창 색은 글자색 짝이 없어 대비가 깨진다. */
+  background: var(--vscode-banner-background);
+  color: var(--vscode-banner-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+#service-lost[hidden] {
+  display: none;
+}
+
+#service-lost p {
+  margin: 0;
+  flex: 1 1 auto;
+}
+
+#notice-action,
+#service-lost-action {
   padding: 4px 14px;
   border: none;
   border-radius: 2px;
@@ -559,6 +583,7 @@ body.vscode-light .modern-tabs .pane.focused .tab-label.active {
   cursor: pointer;
 }
 
-#notice-action:hover {
+#notice-action:hover,
+#service-lost-action:hover {
   background: var(--vscode-button-hoverBackground);
 }

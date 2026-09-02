@@ -69,13 +69,16 @@ async function handleMessage(socket: net.Socket, message: ExtensionToDaemon): Pr
           if (client != null) sendState(client);
         },
         onOutput: (sessionId, bytes) => {
-          if (client != null) {
-            send(client, {
-              type: "output",
-              sessionId,
-              bytesBase64: Buffer.from(bytes).toString("base64"),
-            });
-          }
+          if (client == null) return false;
+          send(client, {
+            type: "output",
+            sessionId,
+            // 복사 없이 같은 메모리를 보는 뷰로 인코딩한다.
+            bytesBase64: Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString(
+              "base64",
+            ),
+          });
+          return true;
         },
       });
     } else {
@@ -91,7 +94,9 @@ async function handleMessage(socket: net.Socket, message: ExtensionToDaemon): Pr
       manager.restoreDeadTabs(message.tabs);
       return;
     case "replay":
-      // 새 webview 가 지난 화면을 그린다. 직렬화 당시 크기를 함께 보내야 그대로 재생된다.
+      // 새 webview 가 지난 화면을 그린다. 이전 화면에 보낸 출력의 확인은 더 오지 않는다.
+      manager.resetFlowControl();
+      // 직렬화 당시 크기를 함께 보내야 그대로 재생된다.
       for (const { sessionId, data, rows, cols } of await manager.serializeScreens()) {
         send(socket, {
           type: "replayScreen",
@@ -132,6 +137,9 @@ async function handleMessage(socket: net.Socket, message: ExtensionToDaemon): Pr
     case "resize":
       manager.resize(message.sessionId, message.rows, message.cols);
       return;
+    case "outputAck":
+      manager.acknowledgeOutput(message.sessionId, message.bytes);
+      return;
   }
 }
 
@@ -167,6 +175,8 @@ const server = net.createServer((socket) => {
       shutdown();
       return;
     }
+    // 받던 화면이 사라졌다. 그쪽의 확인은 오지 않으므로 멈춰 둔 셸을 잇는다.
+    manager.resetFlowControl();
     shutdownTimer = setTimeout(shutdown, reconnectWaitMs);
   });
 });

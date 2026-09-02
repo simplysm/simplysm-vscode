@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { DisplaySettingsSource } from "./display-settings.ts";
 import { resolveFileLinkPath } from "./file-link.ts";
 import { setL10nBundle, t } from "./l10n.ts";
-import { logFailure, setDiagnosticsChannel, warnUser } from "./notify.ts";
+import { confirmWarning, logFailure, setDiagnosticsChannel, warnUser } from "./notify.ts";
 import { DaemonClient, DaemonRejectedError, pipePathForWorkspace } from "./daemon-client.ts";
 import type { DaemonLayoutTree, DaemonSession } from "./daemon-protocol.ts";
 import { toViewLayout, toViewSessions } from "./view-state.ts";
@@ -86,6 +86,10 @@ class TerminalPanel implements vscode.WebviewViewProvider {
   #connectPromise?: Promise<DaemonClient | undefined>;
   /** 같은 워크스페이스의 다른 창이 daemon 을 쥐고 있어 거절당했다 — 다시 시도하지 않는다. */
   #rejected = false;
+  /** daemon 이 죽어 모든 세션을 잃었다. 다시 시작은 사용자가 고를 때만 한다. */
+  #serviceLost = false;
+  /** 새 webview 가 열렸는데 아직 상태를 모른다 — 상태가 오면 비어 있을 때 새 자리를 연다. */
+  #openTabWhenStateArrives = false;
 
   constructor(extensionUri: vscode.Uri, storagePath: string | undefined) {
     this.#extensionUri = extensionUri;
@@ -156,9 +160,14 @@ class TerminalPanel implements vscode.WebviewViewProvider {
       view.webview.onDidReceiveMessage((message: WebviewToExtension) => {
         void this.#dispatchWebviewMessage(message);
       }),
-      // 숨은 뷰의 포커스 상실 신호는 오지 않는다. 조건 키가 켜진 채 남으면 셸 키가 밖에서 산다.
       view.onDidChangeVisibility(() => {
-        if (!view.visible) void this.#setViewFocusContext(false);
+        if (view.visible) {
+          // 내장 터미널처럼, 비어 있는 채 다시 열리면 새 자리를 바로 연다.
+          this.#openTabIfEmpty();
+          return;
+        }
+        // 숨은 뷰의 포커스 상실 신호는 오지 않는다. 조건 키가 켜진 채 남으면 셸 키가 밖에서 산다.
+        void this.#setViewFocusContext(false);
       }),
       view.onDidDispose(() => {
         if (this.#view === view) this.#view = undefined;
@@ -188,6 +197,9 @@ class TerminalPanel implements vscode.WebviewViewProvider {
       case "ready":
         await this.#startView();
         return;
+      case "restartService":
+        await this.#restartService();
+        return;
       case "viewFocus":
         await this.#setViewFocusContext(message.focused);
         return;
@@ -214,12 +226,21 @@ class TerminalPanel implements vscode.WebviewViewProvider {
         await this.#openFileLink(message.cwd, message.path, message.line, message.column);
         return;
       case "newTab":
+        // 서비스가 죽은 뒤의 새 자리 요청은 다시 시작 요청과 같다 — 무반응으로 두지 않는다.
+        if (this.#serviceLost) {
+          await this.#restartService();
+          return;
+        }
         this.#requireDaemon().send({
           type: "newTab",
           ...(message.paneId == null ? {} : { paneId: message.paneId }),
         });
         return;
       case "startSession":
+        if (this.#serviceLost) {
+          await this.#restartService();
+          return;
+        }
         this.#requireDaemon().send({ type: "startSession", tabId: message.tabId, cwd: message.cwd });
         return;
       case "closeTab":
@@ -275,6 +296,14 @@ class TerminalPanel implements vscode.WebviewViewProvider {
           cols: message.cols,
         });
         return;
+      case "outputAck":
+        // 화면이 그린 양의 되돌림이다. daemon 이 이미 사라졌으면 맞출 출력도 없으므로 실패가 아니다.
+        this.#daemon?.send({
+          type: "outputAck",
+          sessionId: message.sessionId,
+          bytes: message.bytes,
+        });
+        return;
     }
   }
 
@@ -308,8 +337,14 @@ class TerminalPanel implements vscode.WebviewViewProvider {
         },
         {
           onState: (layout, sessions) => {
+            const becameEmpty = this.#daemonState?.layout.root != null && layout.root == null;
             this.#daemonState = { layout, sessions };
             this.#postState();
+            if (becameEmpty) this.#hidePanelOnLastClosed();
+            if (this.#openTabWhenStateArrives) {
+              this.#openTabWhenStateArrives = false;
+              this.#openTabIfEmpty();
+            }
           },
           onOutput: (sessionId, bytes) => {
             // Buffer 는 내부 풀을 공유한다 — webview 로 보낼 ArrayBuffer 는 새로 복사한다.
@@ -328,10 +363,12 @@ class TerminalPanel implements vscode.WebviewViewProvider {
           },
           onDisconnected: () => {
             // daemon 이 죽었다(크래시 등). 화면이 살아있는 척 멈춰 있으면 안 된다 —
-            // 모든 세션을 종료 상태로 표시한다. 자동 재기동은 하지 않는다.
+            // 모든 세션을 종료 상태로 표시하고 다시 시작 수단을 보인다. 자동 재기동은 하지 않는다.
             this.#daemon = undefined;
             this.#connectPromise = undefined;
+            this.#serviceLost = true;
             this.#markSessionsLost();
+            this.#postServiceLost();
             logFailure("The terminal daemon connection was lost.");
           },
           onOperationFailed: (context, detail) =>
@@ -339,6 +376,10 @@ class TerminalPanel implements vscode.WebviewViewProvider {
         },
       );
       this.#daemon = daemon;
+      this.#serviceLost = false;
+      this.#postServiceLost();
+      // 이전 daemon 의 상태는 끝났다. 새 daemon 의 첫(빈) 상태를 "마지막 자리가 닫힘"으로 읽지 않게 비운다.
+      this.#daemonState = undefined;
       daemon.send(this.#initMessage());
       if (daemon.recoveredDump != null) {
         // 확장 업데이트로 구 daemon 과 버전이 어긋났다 — 탭들은 이전 화면을 담은 종료 상태로
@@ -363,6 +404,7 @@ class TerminalPanel implements vscode.WebviewViewProvider {
     this.#post({ type: "displaySettings", settings: this.#settings.current });
     this.#post({ type: "shellKeys", blockedKeys: computeBlockedShellKeys(this.#readSetting) });
     this.#post({ type: "texts", texts: viewTexts() });
+    this.#postServiceLost();
 
     if ((vscode.workspace.workspaceFolders?.length ?? 0) === 0) {
       this.#post({ type: "notice", notice: t("Open a folder to use the terminal.") });
@@ -373,24 +415,84 @@ class TerminalPanel implements vscode.WebviewViewProvider {
     const alreadyConnected = this.#daemon != null;
     const daemon = await this.#ensureDaemon(true);
     if (daemon == null) {
-      this.#post({
-        type: "notice",
-        notice: this.#rejected
-          ? // 같은 워크스페이스의 다른 창이 세션을 쥐고 있다 — 이 창의 터미널 뷰는 안내만 보인다.
-            t("Another window is already using the terminal in this workspace.")
-          : t("Could not start the terminal service."),
-      });
+      this.#postConnectFailureNotice();
       return;
     }
 
     if (alreadyConnected || daemon.restored || daemon.recoveredDump != null) {
       // 이 webview 는 새로 만들어졌다 — 상태를 다시 그리고 지난 화면을 되살린다.
-      // 자리가 비어 있어도 새로 만들지 않는다 — 다시 시작은 사용자가 누른다.
       this.#postState();
       daemon.send({ type: "replay" });
+      // 뷰를 연 것은 터미널을 쓰겠다는 뜻이다 — 자리가 하나도 없으면 내장 터미널처럼 바로 하나 연다.
+      // 회수한 탭이 있으면 곧 채워지므로 열지 않는다.
+      if (daemon.recoveredDump == null) {
+        if (this.#daemonState == null) this.#openTabWhenStateArrives = true;
+        else this.#openTabIfEmpty();
+      }
       return;
     }
     daemon.send({ type: "newTab" });
+  }
+
+  #postConnectFailureNotice(): void {
+    this.#post({
+      type: "notice",
+      notice: this.#rejected
+        ? // 같은 워크스페이스의 다른 창이 세션을 쥐고 있다 — 이 창의 터미널 뷰는 안내만 보인다.
+          t("Another window is already using the terminal in this workspace.")
+        : t("Could not start the terminal service."),
+    });
+  }
+
+  /**
+   * 죽은 서비스를 사용자 뜻으로 다시 시작한다. 죽은 화면들은 새 daemon 의 빈 상태로 대체되어
+   * 사라지므로, 먼저 확인을 받는다 — 복사할 것이 남아 있을 수 있다.
+   */
+  async #restartService(): Promise<void> {
+    const confirmed = await confirmWarning(
+      t("Restarting clears all ended terminal screens. Copy anything you still need first."),
+      t("Restart"),
+    );
+    if (!confirmed || !this.#serviceLost) return;
+    const daemon = await this.#ensureDaemon(true);
+    if (daemon == null) {
+      this.#postConnectFailureNotice();
+      return;
+    }
+    daemon.send({ type: "newTab" });
+  }
+
+  /**
+   * 마지막 자리가 닫혀 배치가 비었다. 내장 터미널의 `hideOnLastClosed` 와 같이, 이 뷰가 보이는
+   * 중이면 패널을 닫는다. 다른 뷰가 보이는 패널은 남의 화면이므로 건드리지 않는다.
+   */
+  #hidePanelOnLastClosed(): void {
+    if (this.#view?.visible !== true) return;
+    if (this.#readSetting("terminal.integrated.hideOnLastClosed") === false) return;
+    void vscode.commands.executeCommand("workbench.action.closePanel");
+  }
+
+  /** 뷰가 보이는데 자리가 하나도 없으면 새 자리를 연다. daemon 이 없으면 빈 상태 안내가 대신한다. */
+  #openTabIfEmpty(): void {
+    if (this.#view?.visible !== true) return;
+    if (this.#daemon == null || this.#daemonState == null) return;
+    if (this.#daemonState.layout.root != null) return;
+    this.#daemon.send({ type: "newTab" });
+  }
+
+  /** 서비스 사망 bar — 죽어 있으면 사실과 다시 시작 수단을, 아니면 숨김을 보낸다. */
+  #postServiceLost(): void {
+    this.#post({
+      type: "serviceLost",
+      ...(this.#serviceLost
+        ? {
+            banner: {
+              text: t("The terminal service ended unexpectedly. All sessions in this window were lost."),
+              action: t("Restart terminal service"),
+            },
+          }
+        : {}),
+    });
   }
 
   /** 시작 대기 자리가 보일 내용. 셸이 없으면 고를 것도 없으므로 그 사유를 대신 싣는다. */

@@ -16,5 +16,6 @@
   "Local History failed to open diff: {0}": "로컬 이력 diff 열기 실패: {0}",
   "Local History failed to rollback: {0}": "로컬 이력 되돌리기 실패: {0}",
   "Local History failed to scan: {0}": "로컬 이력 스캔 실패: {0}",
-  "Local History failed to prune old history: {0}": "로컬 이력 정리 실패: {0}"
+  "Local History failed to prune old history: {0}": "로컬 이력 정리 실패: {0}",
+  "Local History failed to save its index: {0}": "로컬 이력 색인 저장 실패: {0}"
 }

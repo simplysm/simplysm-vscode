@@ -69,6 +69,14 @@ export type ExtensionToWebview =
   | { readonly type: "texts"; readonly texts: ViewTexts }
   /** 안내가 있으면 화면 전체를 이것만 보인다. 없으면 상태를 그린다. */
   | { readonly type: "notice"; readonly notice?: LocalizedText }
+  /**
+   * 터미널 서비스가 죽어 모든 세션을 잃었다. 화면 위쪽 bar 로 사실과 다시 시작할 수단을 보인다 —
+   * 죽은 화면은 그대로 두어 읽고 복사할 수 있다. bar 가 없으면 숨긴다.
+   */
+  | {
+      readonly type: "serviceLost";
+      readonly banner?: { readonly text: LocalizedText; readonly action: LocalizedText };
+    }
   /** 확장 호스트가 가진 상태 전체. 화면은 이 값만으로 그려진다. */
   | {
       readonly type: "state";
@@ -88,6 +96,8 @@ export type ExtensionToWebview =
 
 export type WebviewToExtension =
   | { readonly type: "ready" }
+  /** 죽은 터미널 서비스를 다시 시작해 달라. 확인은 확장 호스트가 받는다. */
+  | { readonly type: "restartService" }
   /** 새 자리를 만든다. pane 을 실으면 그 pane 에, 없으면 포커스 pane 이나 빈 배치에 만든다. */
   | { readonly type: "newTab"; readonly paneId?: string }
   /** 시작 대기 자리에서 시작 폴더가 정해졌다. */
@@ -125,6 +135,8 @@ export type WebviewToExtension =
       readonly rows: number;
       readonly cols: number;
     }
+  /** 받은 출력을 화면에 다 그렸다. 이 되돌림으로 셸 출력 속도가 화면 소비 속도에 맞춰진다. */
+  | { readonly type: "outputAck"; readonly sessionId: string; readonly bytes: number }
   /** 선택한 텍스트를 클립보드에 넣는다. 빈 선택은 webview 가 걸러 보내지 않는다. */
   | { readonly type: "copyText"; readonly text: string }
   /** 붙여넣기 — 클립보드를 읽어 `pasteText` 로 되돌려 달라. */

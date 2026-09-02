@@ -93,7 +93,8 @@ export class HistoryTreeProvider implements vscode.TreeDataProvider<HistoryNode>
       item.contextValue = "snapshot";
       if (target?.isFolder === true) {
         const count = this.entriesOf(target, node.snapshot).length;
-        item.description = count === 1 ? vscode.l10n.t("1 file") : vscode.l10n.t("{0} files", count);
+        item.description =
+          count === 1 ? vscode.l10n.t("1 file") : vscode.l10n.t("{0} files", count);
       }
       return item;
     }

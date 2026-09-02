@@ -37,6 +37,12 @@ const initialCols = 80;
 const outputFlushDelayMs = 5;
 const outputFlushBytes = 64 * 1024;
 
+// 화면이 못 따라가면 셸을 멈춘다. 보냈지만 화면이 아직 다 그리지 못한 바이트가 상한을 넘으면
+// pty 를 멈추고, 하한 아래로 내려오면 잇는다 — 안 멈추면 큐가 무한정 자라고 에뮬레이터는
+// 한도를 넘는 쓰기를 버린다. 값은 VS Code 내장 터미널과 같다.
+const flowControlHighWatermarkBytes = 100_000;
+const flowControlLowWatermarkBytes = 5_000;
+
 interface Session {
   readonly sessionId: string;
   readonly shellPath: string;
@@ -51,12 +57,17 @@ interface Session {
   pendingOutput: Buffer[];
   pendingBytes: number;
   flushTimer?: NodeJS.Timeout;
+  /** 보냈지만 화면이 아직 다 그렸다고 확인하지 않은 바이트. */
+  unackedBytes: number;
+  /** 위 값이 상한을 넘어 pty 를 멈춰 둔 상태. */
+  paused: boolean;
 }
 
 export interface SessionManagerCallbacks {
   /** 배치나 세션 목록이 달라졌다. 무엇이 바뀌었는지 가리지 않고 전체를 다시 그린다. */
   readonly onStateChanged: () => void;
-  readonly onOutput: (sessionId: string, bytes: Uint8Array) => void;
+  /** 출력을 내보낸다. 받을 곳이 없어 버렸으면 거짓 — 화면이 확인할 일이 없으므로 세지 않는다. */
+  readonly onOutput: (sessionId: string, bytes: Uint8Array) => boolean;
 }
 
 export class SessionManager {
@@ -128,7 +139,38 @@ export class SessionManager {
         : Buffer.concat(session.pendingOutput);
     session.pendingOutput = [];
     session.pendingBytes = 0;
-    this.#callbacks.onOutput(session.sessionId, new Uint8Array(merged));
+    if (!this.#callbacks.onOutput(session.sessionId, merged)) return;
+    session.unackedBytes += merged.length;
+    if (
+      !session.paused &&
+      session.shell != null &&
+      session.unackedBytes > flowControlHighWatermarkBytes
+    ) {
+      session.shell.pause();
+      session.paused = true;
+    }
+  }
+
+  /** 화면이 그 만큼 그렸다. 멈춰 둔 셸은 하한에서 잇는다. 이미 닫힌 세션의 늦은 확인은 맞출 것이 없다. */
+  acknowledgeOutput(sessionId: string, bytes: number): void {
+    const session = this.#sessions.get(sessionId);
+    if (session == null) return;
+    session.unackedBytes = Math.max(0, session.unackedBytes - bytes);
+    if (session.paused && session.unackedBytes < flowControlLowWatermarkBytes) {
+      session.shell?.resume();
+      session.paused = false;
+    }
+  }
+
+  /** 받는 화면이 바뀌었다(끊김·재생). 옛 화면의 확인은 오지 않으므로 센 것을 버리고 멈춘 셸을 잇는다. */
+  resetFlowControl(): void {
+    for (const session of this.#sessions.values()) {
+      session.unackedBytes = 0;
+      if (session.paused) {
+        session.shell?.resume();
+        session.paused = false;
+      }
+    }
   }
 
   #queueOutput(session: Session, bytes: Buffer): void {
@@ -143,7 +185,9 @@ export class SessionManager {
 
   /** 화면 에뮬레이터의 write 는 비동기다 — 큐가 다 그려진 다음에야 직렬화가 실제 화면이 된다. */
   async #flushScreens(): Promise<void> {
-    // 모아둔 출력을 먼저 내보내야 직렬화 결과와 이후 출력이 겹치지 않는다.
+    // 모아둔 출력은 이미 화면에 반영돼 직렬화 결과에 포함된다. 직렬화 전에 내보내야 그 중복분이
+    // 재생 데이터 앞에 놓여 화면 쪽이 재생 직전에 비울 때 함께 지워진다 — 뒤에 내보내면 재생 뒤에
+    // 다시 그려진다.
     for (const session of this.#sessions.values()) this.#flushOutput(session);
     await Promise.all(
       [...this.#sessions.values()].map(
@@ -158,14 +202,6 @@ export class SessionManager {
    */
   restoreDeadTabs(tabs: readonly DumpTab[]): void {
     for (const tab of tabs) {
-      const tabId = randomUUID();
-      this.#changeLayout((tree) =>
-        tree.root == null
-          ? createFirstPane(tree, tabId, randomUUID())
-          : addTab(tree, tree.focusedPaneId!, tabId),
-      );
-      if (tab.name != null) this.#changeLayout((tree) => setTabName(tree, tabId, tab.name));
-
       const screen = new Terminal({
         rows: initialRows,
         cols: initialCols,
@@ -185,9 +221,21 @@ export class SessionManager {
         exitedCause: { kind: "restoreFailed" },
         pendingOutput: [],
         pendingBytes: 0,
+        unackedBytes: 0,
+        paused: false,
       };
       this.#sessions.set(session.sessionId, session);
-      this.#changeLayout((tree) => attachSession(tree, tabId, session.sessionId));
+      // 자리 만들기·이름·세션 붙이기를 한 번에 알린다. 세션 없는 중간 상태가 나가면 화면이
+      // 새 자리로 보고 세션 시작을 요청해, 이미 붙은 자리에 대한 실패로 되돌아온다.
+      const tabId = randomUUID();
+      this.#changeLayout((tree) => {
+        const added =
+          tree.root == null
+            ? createFirstPane(tree, tabId, randomUUID())
+            : addTab(tree, tree.focusedPaneId!, tabId);
+        const named = tab.name == null ? added : setTabName(added, tabId, tab.name);
+        return attachSession(named, tabId, session.sessionId);
+      });
     }
   }
 
@@ -262,11 +310,13 @@ export class SessionManager {
       serializer,
       pendingOutput: [],
       pendingBytes: 0,
+      unackedBytes: 0,
+      paused: false,
     };
     this.#sessions.set(session.sessionId, session);
     shell.onData((chunk: string | Buffer) => {
       const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, "utf8");
-      screen.write(new Uint8Array(bytes));
+      screen.write(bytes);
       this.#queueOutput(session, bytes);
     });
     shell.onExit(({ exitCode, signal }) => this.#handleExit(session, exitCode, signal));

@@ -24,5 +24,9 @@
   "Could not start the terminal service.": "터미널 서비스를 시작하지 못했습니다.",
   "This session could not be restored after an extension update.": "확장 업데이트로 이 세션을 복원하지 못했습니다.",
   "Terminal sessions could not be restored after the extension update.": "확장 업데이트로 터미널 세션을 복원하지 못했습니다.",
-  "The terminal service ended unexpectedly, so this session was lost.": "터미널 서비스가 예기치 않게 끝나 이 세션을 잃었습니다."
+  "The terminal service ended unexpectedly, so this session was lost.": "터미널 서비스가 예기치 않게 끝나 이 세션을 잃었습니다.",
+  "The terminal service ended unexpectedly. All sessions in this window were lost.": "터미널 서비스가 예기치 않게 끝났습니다. 이 창의 모든 세션을 잃었습니다.",
+  "Restart terminal service": "터미널 서비스 다시 시작",
+  "Restarting clears all ended terminal screens. Copy anything you still need first.": "다시 시작하면 끝난 터미널 화면이 모두 지워집니다. 남겨 둘 내용은 먼저 복사하세요.",
+  "Restart": "다시 시작"
 }

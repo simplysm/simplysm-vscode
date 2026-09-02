@@ -57,6 +57,7 @@ export async function openSnapshotDiff(
   target: ResolvedTarget & { readonly uri: vscode.Uri },
   snapshot: Snapshot,
   entryPath: string = target.relPath,
+  signal?: AbortSignal,
 ): Promise<void> {
   const entry = snapshot.entries.find((snapshotEntry) => snapshotEntry.path === entryPath);
   if (entry === undefined) return;
@@ -68,6 +69,7 @@ export async function openSnapshotDiff(
     // 현재 파일 없음 — 크기 0 취급
   }
   const snapshotSize = entry.hash === null ? 0 : await target.store.blobSize(entry.hash);
+  if (signal?.aborted === true) return;
   if (currentSize > MAX_DIFF_SIZE || snapshotSize > MAX_DIFF_SIZE) {
     void vscode.window.showWarningMessage(
       vscode.l10n.t("File is too large to show diff. Use rollback to restore it."),
@@ -92,6 +94,7 @@ export async function openSnapshotRangeDiff(
   target: ResolvedTarget & { readonly uri: vscode.Uri },
   fromNode: { readonly snapshot: Snapshot; readonly pathAt?: string },
   toNode: { readonly snapshot: Snapshot; readonly pathAt?: string },
+  signal?: AbortSignal,
 ): Promise<void> {
   const toPath = toNode.pathAt ?? target.relPath;
   const toEntry = toNode.snapshot.entries.find((entry) => entry.path === toPath);
@@ -107,6 +110,7 @@ export async function openSnapshotRangeDiff(
   // 대용량은 diff 를 열지 않는다 — 양쪽 모두 blob 크기로 판정 (기록·롤백은 크기 무관)
   const fromSize = fromHash === null ? 0 : await target.store.blobSize(fromHash);
   const toSize = toEntry.hash === null ? 0 : await target.store.blobSize(toEntry.hash);
+  if (signal?.aborted === true) return;
   if (fromSize > MAX_DIFF_SIZE || toSize > MAX_DIFF_SIZE) {
     void vscode.window.showWarningMessage(
       vscode.l10n.t("File is too large to show diff. Use rollback to restore it."),
@@ -135,6 +139,7 @@ export async function openSnapshotRangeDiff(
 export async function openFolderChanges(
   target: ResolvedTarget & { readonly uri: vscode.Uri },
   snapshot: Snapshot,
+  signal?: AbortSignal,
 ): Promise<void> {
   const folder = vscode.workspace.getWorkspaceFolder(target.uri);
   if (folder === undefined) return;
@@ -142,18 +147,28 @@ export async function openFolderChanges(
   const index = await target.store.loadIndex();
   const resources: [vscode.Uri, vscode.Uri, vscode.Uri][] = [];
   for (const [entryPath, hash] of state) {
+    if (signal?.aborted === true) return;
     const fileUri = vscode.Uri.joinPath(folder.uri, entryPath);
-    let currentSize: number | null = null; // null = 현재 파일 없음
+    let current: vscode.FileStat | null = null; // null = 현재 파일 없음
     try {
-      currentSize = (await vscode.workspace.fs.stat(fileUri)).size;
+      current = await vscode.workspace.fs.stat(fileUri);
     } catch {
       // 현재 없음 — 시점에 존재했다면 diff 대상
     }
+    // 색인의 mtime/size 가 현재와 같으면 그 해시가 현재 내용 — 읽지 않는다 (스캔과 같은 판정).
+    // 색인이 낡았으면 불일치로 떨어져 아래에서 읽으므로 변경을 놓치지 않는다
+    const known = current === null ? undefined : index.get(entryPath);
+    const knownHash =
+      current !== null &&
+      known !== undefined &&
+      known.mtime === current.mtime &&
+      known.size === current.size
+        ? known.hash
+        : undefined;
     const snapshotSize = hash === null ? 0 : await target.store.blobSize(hash);
-    if ((currentSize ?? 0) > MAX_DIFF_SIZE || snapshotSize > MAX_DIFF_SIZE) {
-      // 대용량 — 내용을 읽지 않는다. 변경 판정은 색인의 마지막 기록 해시로 대체
-      // (열람 직전 스캔 트리거가 색인을 최신으로 유지)
-      const currentHash = currentSize === null ? null : (index.get(entryPath)?.hash ?? null);
+    if ((current?.size ?? 0) > MAX_DIFF_SIZE || snapshotSize > MAX_DIFF_SIZE) {
+      // 대용량 — 내용을 읽지 않는다. 색인으로 확정 못 하면 변경으로 본다 (놓치는 쪽보다 낫다)
+      const currentHash = current === null ? null : knownHash;
       if (currentHash === hash) continue;
       // 목록에는 남기되 양쪽을 안내 텍스트 가상 문서로 — 변경 사실만 보이고 내용 로드는 없음
       resources.push([
@@ -164,11 +179,15 @@ export async function openFolderChanges(
       continue;
     }
     let currentHash: string | null = null;
-    if (currentSize !== null) {
-      try {
-        currentHash = hashOf(await vscode.workspace.fs.readFile(fileUri));
-      } catch {
-        // stat 과 읽기 사이 삭제됨 — 없음 취급
+    if (current !== null) {
+      if (knownHash !== undefined) {
+        currentHash = knownHash;
+      } else {
+        try {
+          currentHash = hashOf(await vscode.workspace.fs.readFile(fileUri));
+        } catch {
+          // stat 과 읽기 사이 삭제됨 — 없음 취급
+        }
       }
     }
     if (currentHash === hash) continue;
@@ -176,6 +195,7 @@ export async function openFolderChanges(
     const modifiedUri = currentHash === null ? buildHistoryUri(fileUri, entryPath, null) : fileUri;
     resources.push([fileUri, buildHistoryUri(fileUri, entryPath, hash), modifiedUri]);
   }
+  if (signal?.aborted === true) return;
   const folderName = target.relPath === "" ? folder.name : (target.relPath.split("/").at(-1) ?? "");
   await vscode.commands.executeCommand(
     "vscode.changes",
@@ -209,6 +229,7 @@ export async function openFolderRangeChanges(
   target: ResolvedTarget & { readonly uri: vscode.Uri },
   fromAt: number,
   toAt: number,
+  signal?: AbortSignal,
 ): Promise<void> {
   const folder = vscode.workspace.getWorkspaceFolder(target.uri);
   if (folder === undefined) return;
@@ -225,6 +246,7 @@ export async function openFolderRangeChanges(
   );
   const resources: [vscode.Uri, vscode.Uri, vscode.Uri][] = [];
   for (const [entryPath, afterHash] of after) {
+    if (signal?.aborted === true) return;
     if (renamedAway.has(entryPath)) continue;
     const beforeHash = before.get(origins.get(entryPath)!) ?? null;
     if (beforeHash === afterHash) continue;
@@ -246,6 +268,7 @@ export async function openFolderRangeChanges(
       buildHistoryUri(fileUri, entryPath, afterHash),
     ]);
   }
+  if (signal?.aborted === true) return;
   const folderName = target.relPath === "" ? folder.name : (target.relPath.split("/").at(-1) ?? "");
   await vscode.commands.executeCommand(
     "vscode.changes",

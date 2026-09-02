@@ -99,7 +99,9 @@ export async function rollbackFolder(
     operations.push({ uri: fileUri, hash });
   }
   if (operations.length === 0) {
-    void vscode.window.showInformationMessage(vscode.l10n.t("The folder is already in that state."));
+    void vscode.window.showInformationMessage(
+      vscode.l10n.t("The folder is already in that state."),
+    );
     return false;
   }
 

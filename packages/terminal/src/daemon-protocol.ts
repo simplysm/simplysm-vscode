@@ -87,7 +87,13 @@ export type ExtensionToDaemon =
       readonly sessionId: string;
       readonly rows: number;
       readonly cols: number;
-    };
+    }
+  /**
+   * 화면이 그 만큼의 output 바이트를 다 그렸다. daemon 은 보냈지만 아직 확인되지 않은 양이
+   * 상한을 넘으면 pty 를 멈추고, 하한 아래로 내려오면 잇는다 — 화면이 못 따라가는 만큼
+   * 큐가 무한정 자라지 않게 한다.
+   */
+  | { readonly type: "outputAck"; readonly sessionId: string; readonly bytes: number };
 
 export type DaemonToExtension =
   /**

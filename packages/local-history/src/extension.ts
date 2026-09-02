@@ -28,19 +28,27 @@ function fileTargetOf(target: HistoryTarget, entryPath: string): HistoryTarget |
   };
 }
 
+/** deactivate 가 대기 중 기록을 마저 쓰기 위한 참조 — activate 에서 채운다. */
+let active: { recorder: Recorder; stores: WorkspaceStores } | undefined;
+
 export function activate(context: vscode.ExtensionContext): void {
   const logger = vscode.window.createOutputChannel("Simplysm Local History", { log: true });
-  const stores = new WorkspaceStores(context.globalStorageUri.fsPath);
+  const errorText = (error: unknown): string =>
+    error instanceof Error ? error.message : String(error);
+  const stores = new WorkspaceStores(context.globalStorageUri.fsPath, (error) => {
+    void vscode.window.showErrorMessage(
+      vscode.l10n.t("Local History failed to save its index: {0}", errorText(error)),
+    );
+  });
   const excludes = new Excludes();
   const recorder = new Recorder(stores, excludes, logger);
+  active = { recorder, stores };
   const tree = new HistoryTreeProvider(logger);
   const treeView = vscode.window.createTreeView("simplysm-local-history.view", {
     treeDataProvider: tree,
     canSelectMany: true, // 범위선택 → 병합 diff
   });
 
-  const errorText = (error: unknown): string =>
-    error instanceof Error ? error.message : String(error);
   const scanner = new Scanner(stores, recorder, excludes, (error) => {
     void vscode.window.showErrorMessage(
       vscode.l10n.t("Local History failed to scan: {0}", errorText(error)),
@@ -68,6 +76,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   let previousFocused = vscode.window.state.focused;
   let previousSelection: readonly HistoryNode[] = []; // 비연속 선택 판별용 — 직전 선택과 비교해 새 클릭 항목을 찾는다
+  let openAbort: AbortController | undefined; // 빠른 ↑↓ 탐색 — 마지막 선택만 diff 를 연다 (먼저 시작한 느린 열기가 뒤늦게 덮지 않게)
   context.subscriptions.push(
     // 스캔 트리거 2: 창 재포커스
     vscode.window.onDidChangeWindowState((windowState) => {
@@ -91,6 +100,8 @@ export function activate(context: vscode.ExtensionContext): void {
       const added = selection.filter((candidate) => !previousSelection.includes(candidate));
       previousSelection = selection;
       if (node === undefined || target === undefined) return;
+      openAbort?.abort();
+      const signal = (openAbort = new AbortController()).signal;
       const open = async (): Promise<void> => {
         if (selection.length >= 2) {
           // 연속성 판정 — 선택된 고유 시각들이 루트 목록에서 빈틈없는 구간이어야 범위선택
@@ -102,6 +113,7 @@ export function activate(context: vscode.ExtensionContext): void {
             .sort((a, b) => a - b);
           const betweenCount =
             rootAts.indexOf(selectedAts.at(-1)!) - rootAts.indexOf(selectedAts[0]) + 1;
+          if (signal.aborted) return;
           if (betweenCount !== selectedAts.length) {
             // 비연속 — 마지막 클릭 항목만 남긴다 (ctrl+클릭 = 일반 클릭과 동일하게)
             await treeView.reveal(added[0] ?? node, { select: true, focus: false });
@@ -111,17 +123,19 @@ export function activate(context: vscode.ExtensionContext): void {
           const fromNode = sorted[0];
           const toNode = sorted.at(-1)!;
           if (target.isFolder) {
-            await openFolderRangeChanges(target, fromNode.snapshot.at, toNode.snapshot.at);
+            await openFolderRangeChanges(target, fromNode.snapshot.at, toNode.snapshot.at, signal);
           } else {
-            await openSnapshotRangeDiff(target, fromNode, toNode);
+            await openSnapshotRangeDiff(target, fromNode, toNode, signal);
           }
         } else if (node.kind === "entry") {
           const fileTarget = fileTargetOf(target, node.entry.path);
-          if (fileTarget !== undefined) await openSnapshotDiff(fileTarget, node.snapshot);
+          if (fileTarget !== undefined) {
+            await openSnapshotDiff(fileTarget, node.snapshot, undefined, signal);
+          }
         } else if (target.isFolder) {
-          await openFolderChanges(target, node.snapshot);
+          await openFolderChanges(target, node.snapshot, signal);
         } else {
-          await openSnapshotDiff(target, node.snapshot, node.pathAt);
+          await openSnapshotDiff(target, node.snapshot, node.pathAt, signal);
         }
       };
       open().catch((error: unknown) => {
@@ -130,27 +144,30 @@ export function activate(context: vscode.ExtensionContext): void {
         );
       });
     }),
-    vscode.commands.registerCommand("simplysm-local-history.rollback", async (node: HistoryNode) => {
-      const target = tree.getTarget();
-      if (target === undefined) return;
-      void scanner.scan(); // 스캔 트리거 4: 롤백 직전
-      try {
-        let done: boolean;
-        if (node.kind === "entry") {
-          const fileTarget = fileTargetOf(target, node.entry.path);
-          done = fileTarget !== undefined && (await rollbackFile(fileTarget, node.snapshot));
-        } else if (target.isFolder) {
-          done = await rollbackFolder(target, node.snapshot);
-        } else {
-          done = await rollbackFile(target, node.snapshot, node.pathAt);
+    vscode.commands.registerCommand(
+      "simplysm-local-history.rollback",
+      async (node: HistoryNode) => {
+        const target = tree.getTarget();
+        if (target === undefined) return;
+        void scanner.scan(); // 스캔 트리거 4: 롤백 직전
+        try {
+          let done: boolean;
+          if (node.kind === "entry") {
+            const fileTarget = fileTargetOf(target, node.entry.path);
+            done = fileTarget !== undefined && (await rollbackFile(fileTarget, node.snapshot));
+          } else if (target.isFolder) {
+            done = await rollbackFolder(target, node.snapshot);
+          } else {
+            done = await rollbackFile(target, node.snapshot, node.pathAt);
+          }
+          if (done) tree.refresh();
+        } catch (error) {
+          void vscode.window.showErrorMessage(
+            vscode.l10n.t("Local History failed to rollback: {0}", errorText(error)),
+          );
         }
-        if (done) tree.refresh();
-      } catch (error) {
-        void vscode.window.showErrorMessage(
-          vscode.l10n.t("Local History failed to rollback: {0}", errorText(error)),
-        );
-      }
-    }),
+      },
+    ),
     vscode.commands.registerCommand(
       "simplysm-local-history.showHistory",
       async (uri?: vscode.Uri) => {
@@ -179,4 +196,13 @@ export function activate(context: vscode.ExtensionContext): void {
       },
     ),
   );
+}
+
+/** 종료·리로드 직전 debounce 창에 남은 변경과 색인을 마저 쓴다 — VS Code 가 이 Promise 를 기다린다(상한 5초). */
+export async function deactivate(): Promise<void> {
+  if (active === undefined) return;
+  const { recorder, stores } = active;
+  active = undefined;
+  await recorder.flushNow();
+  await stores.flushIndexes();
 }

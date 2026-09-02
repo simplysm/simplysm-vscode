@@ -21,3 +21,9 @@ export function warnUser(message: LocalizedText): void {
   diagnostics?.warn(message);
   void vscode.window.showWarningMessage(message);
 }
+
+/** 되돌릴 수 없는 조작 앞의 확인. 사용자가 그 행동 버튼을 골랐을 때만 참. 번역을 거친 값만 받는다. */
+export async function confirmWarning(message: LocalizedText, action: LocalizedText): Promise<boolean> {
+  const choice = await vscode.window.showWarningMessage(message, { modal: true }, action);
+  return choice === action;
+}

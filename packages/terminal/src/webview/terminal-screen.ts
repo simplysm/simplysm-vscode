@@ -27,6 +27,8 @@ export interface TerminalScreenCallbacks {
   /** 셸로 보낼 바이트. 에뮬레이터가 스스로 되돌리는 응답도 같은 경로로 나온다. */
   readonly onInput: (data: string, binary: boolean) => void;
   readonly onResize: (rows: number, cols: number) => void;
+  /** 받은 출력 바이트를 화면에 다 그렸다. 셸 출력 속도를 여기에 맞추는 되돌림이다. */
+  readonly onOutputHandled: (bytes: number) => void;
   /** 선택한 텍스트를 클립보드에 넣어 달라. 빈 선택은 여기 오지 않는다. */
   readonly onCopy: (text: string) => void;
   /** 클립보드를 읽어 붙여넣기를 이어 달라. */
@@ -102,8 +104,13 @@ export class TerminalScreen {
   /** 지난 화면 재생 중 — 크기 맞춤이 끼어들면 재생 크기가 어긋난다. */
   #restoring = false;
   #webglAddon?: WebglAddon;
-  /** WebGL 이 한 번 실패한 화면은 다시 시도하지 않는다 — 같은 환경에서 또 실패한다. */
+  /** WebGL 렌더러를 만들지 못한 화면은 다시 시도하지 않는다 — 같은 환경에서 또 실패한다. */
   #webglFailed = false;
+  /**
+   * GPU context 를 잃었다(브라우저의 컨텍스트 수 상한 초과 등). 환경 문제가 아니라 일시적일 수
+   * 있으므로, 이 화면이 다음에 보이거나 크기가 바뀔 때 한 번 다시 시도한다.
+   */
+  #webglLost = false;
 
   constructor(options: DisplayOptions, callbacks: TerminalScreenCallbacks) {
     this.#callbacks = callbacks;
@@ -170,7 +177,8 @@ export class TerminalScreen {
       if (!this.#exited) callbacks.onInput(data, true);
     });
     this.#terminal.onResize(({ rows, cols }) => {
-      if (!this.#exited) callbacks.onResize(rows, cols);
+      // 재생 중의 크기 맞춤은 화면 내부 조작이다 — 셸에 알리면 옛 크기로 갔다가 돌아오는 헛 resize 가 된다.
+      if (!this.#exited && !this.#restoring) callbacks.onResize(rows, cols);
     });
 
     // 화면 영역이 바뀌면 다시 맞춘다. 감지는 우리 몫이고 환산은 크기 맞춤이 한다.
@@ -179,9 +187,9 @@ export class TerminalScreen {
     this.fit();
   }
 
-  /** 받은 순서와 내용 그대로 넣는다. */
+  /** 받은 순서와 내용 그대로 넣는다. 다 그린 시점을 되돌려 셸 출력 속도가 여기에 맞춰진다. */
   write(bytes: Uint8Array): void {
-    this.#terminal.write(bytes);
+    this.#terminal.write(bytes, () => this.#callbacks.onOutputHandled(bytes.length));
   }
 
   /**
@@ -190,6 +198,9 @@ export class TerminalScreen {
    */
   restore(bytes: Uint8Array, rows: number, cols: number): void {
     this.#restoring = true;
+    // 재생 데이터는 빈 화면을 전제한다(지우는 시퀀스로 시작하지 않는다). 화면이 만들어진 뒤
+    // 재생 전까지 도착한 출력은 재생 데이터에도 들어 있으므로, 비우지 않으면 두 번 그려진다.
+    this.#terminal.reset();
     this.#terminal.resize(cols, rows);
     this.#terminal.write(bytes, () => {
       this.#restoring = false;
@@ -212,6 +223,11 @@ export class TerminalScreen {
     if (this.#restoring) return;
     if (this.rootElement.offsetParent == null) return;
     this.#fitAddon.fit();
+    // 보이는 화면만 다시 시도한다 — 숨은 화면까지 만들면 상한을 다시 넘겨 서로 밀어낸다.
+    if (this.#webglLost) {
+      this.#webglLost = false;
+      this.#applyRenderer(this.#displayed);
+    }
   }
 
   focus(): void {
@@ -239,21 +255,21 @@ export class TerminalScreen {
 
     try {
       const addon = new WebglAddon();
-      // GPU context 를 잃으면(드라이버 재시작 등) DOM 렌더러로 내려간다.
-      addon.onContextLoss(() => this.#dropWebgl("context loss"));
+      // GPU context 를 잃으면 DOM 렌더러로 내려가되, 다음에 보일 때 다시 시도한다.
+      addon.onContextLoss(() => {
+        this.#webglAddon?.dispose();
+        this.#webglAddon = undefined;
+        this.#webglLost = true;
+        console.warn("terminal: WebGL context lost, using DOM renderer until the screen is shown again.");
+      });
       this.#terminal.loadAddon(addon);
       this.#webglAddon = addon;
     } catch (error) {
+      // 만들지조차 못했다 — 이 환경에서는 다시 해도 같다.
       this.#webglAddon = undefined;
-      this.#dropWebgl(error);
+      this.#webglFailed = true;
+      console.error("terminal: WebGL renderer unavailable, falling back to DOM renderer.", error);
     }
-  }
-
-  #dropWebgl(reason: unknown): void {
-    this.#webglFailed = true;
-    this.#webglAddon?.dispose();
-    this.#webglAddon = undefined;
-    console.error("terminal: WebGL renderer unavailable, falling back to DOM renderer.", reason);
   }
 
   dispose(): void {

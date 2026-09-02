@@ -11,55 +11,64 @@ async function openTerminalPanel(workbox: Parameters<typeof webviewFrame>[0]) {
   return frame;
 }
 
-test("정상 종료하면 그 자리가 닫히고 빈 상태 안내가 뜬다", async ({ workbox }) => {
+test("정상 종료로 마지막 자리가 닫히면 내장 터미널처럼 패널이 숨겨진다", async ({ workbox }) => {
   const frame = await openTerminalPanel(workbox);
   await frame.locator(".screen .xterm-screen").click();
   await workbox.keyboard.type("exit\r");
 
-  await expect(frame.locator("#notice")).toContainText("No terminal session is open.", {
-    timeout: 30_000,
-  });
-  await expect(frame.locator(".screen")).toHaveCount(0);
-  await expect(frame.locator("#notice-action")).toContainText("Start a session");
+  await expect(workbox.locator("#workbench\\.parts\\.panel")).toBeHidden({ timeout: 30_000 });
   await workbox.screenshot({ path: path.join(shotDir, "session-empty.png") });
 });
 
-test("빈 상태에서 세션을 시작하면 다시 뜬다", async ({ workbox }) => {
+test("마지막 자리를 닫은 뒤 패널을 다시 열면 새 세션이 바로 뜬다", async ({ workbox }) => {
   const frame = await openTerminalPanel(workbox);
   await frame.locator(".screen .xterm-screen").click();
   await workbox.keyboard.type("exit\r");
-  await expect(frame.locator("#notice-action")).toBeVisible({ timeout: 30_000 });
+  await expect(workbox.locator("#workbench\\.parts\\.panel")).toBeHidden({ timeout: 30_000 });
 
-  await frame.locator("#notice-action").click();
-  await expect(frame.locator(".screen .xterm-screen")).toBeVisible({ timeout: 60_000 });
-  await expect(frame.locator("#notice")).toBeHidden();
+  await runCommand(workbox, "Simplysm Terminal");
+  const frameAgain = webviewFrame(workbox);
+  await expect(frameAgain.locator(".screen .xterm-screen")).toBeVisible({ timeout: 60_000 });
+  await expect(frameAgain.locator("#notice")).toBeHidden();
+  await expect(frameAgain.locator(".tab-label")).toHaveCount(1);
 
-  await frame.locator(".screen .xterm-screen").click();
+  await frameAgain.locator(".screen .xterm-screen").click();
   await workbox.keyboard.type("echo restarted-session\r");
-  await expect(frame.locator(".xterm-rows")).toContainText("restarted-session", {
+  await expect(frameAgain.locator(".xterm-rows")).toContainText("restarted-session", {
     timeout: 30_000,
   });
   await workbox.screenshot({ path: path.join(shotDir, "session-restarted.png") });
 });
 
-test("빈 상태는 panel 을 닫았다 열어도 세션을 자동으로 만들지 않는다", async ({ workbox }) => {
-  const frame = await openTerminalPanel(workbox);
-  await frame.locator(".screen .xterm-screen").click();
-  await workbox.keyboard.type("exit\r");
-  await expect(frame.locator("#notice-action")).toBeVisible({ timeout: 30_000 });
+test("hideOnLastClosed 를 끄면 패널이 남고 빈 상태 안내에서 시작할 수 있다", async ({
+  vscodeExePath,
+}, testInfo) => {
+  const app = await launchVsCode(
+    vscodeExePath,
+    {
+      extensionsDir: testInfo.outputPath("extensions"),
+      userDataDir: testInfo.outputPath("user-data"),
+    },
+    { settings: { "terminal.integrated.hideOnLastClosed": false } },
+  );
+  try {
+    const window = await app.firstWindow();
+    const frame = await openTerminalPanel(window);
+    await frame.locator(".screen .xterm-screen").click();
+    await window.keyboard.type("exit\r");
 
-  await runCommand(workbox, "View: Close Panel");
-  await expect(workbox.locator("#workbench\\.parts\\.panel")).toBeHidden();
-  await runCommand(workbox, "Simplysm Terminal");
+    await expect(frame.locator("#notice")).toContainText("No terminal session is open.", {
+      timeout: 30_000,
+    });
+    await expect(window.locator("#workbench\\.parts\\.panel")).toBeVisible();
+    await expect(frame.locator(".screen")).toHaveCount(0);
 
-  const frameAgain = webviewFrame(workbox);
-  await expect(frameAgain.locator("#notice")).toContainText("No terminal session is open.", {
-    timeout: 30_000,
-  });
-  // 다시 보이는 동안 세션이 저절로 생기지 않는지 확인할 시간을 준다
-  await workbox.waitForTimeout(8000);
-  await expect(frameAgain.locator(".screen")).toHaveCount(0);
-  await expect(frameAgain.locator(".tab-label")).toHaveCount(0);
+    await frame.locator("#notice-action").click();
+    await expect(frame.locator(".screen .xterm-screen")).toBeVisible({ timeout: 60_000 });
+    await expect(frame.locator("#notice")).toBeHidden();
+  } finally {
+    await app.close();
+  }
 });
 
 test("시작에 실패한 자리는 panel 을 닫았다 열어도 사유를 그대로 보인다", async ({
@@ -96,23 +105,23 @@ test("시작에 실패한 자리는 panel 을 닫았다 열어도 사유를 그�
   }
 });
 
-test("비워 둔 창을 리로드해도 빈 상태가 그대로 이어진다", async ({ workbox }) => {
-  // 마지막 자리를 닫은 것은 사용자의 명시 행위다 — reload 가 이를 뒤집고 세션을 만들면 안 된다.
+test("비워 둔 창을 리로드해도 저절로 세션이 생기지 않고, 패널을 열면 그때 뜬다", async ({
+  workbox,
+}) => {
+  // reload 자체는 아무것도 만들지 않는다. 세션은 사용자가 패널을 여는 순간에만 생긴다.
   const frame = await openTerminalPanel(workbox);
   await frame.locator(".screen .xterm-screen").click();
   await workbox.keyboard.type("exit\r");
-  await expect(frame.locator("#notice-action")).toBeVisible({ timeout: 30_000 });
+  await expect(workbox.locator("#workbench\\.parts\\.panel")).toBeHidden({ timeout: 30_000 });
 
   await runCommand(workbox, "Developer: Reload Window");
-  await workbox.waitForTimeout(5000);
-  await runCommand(workbox, "Simplysm Terminal");
+  await workbox.waitForTimeout(8000);
+  await expect(workbox.locator("#workbench\\.parts\\.panel")).toBeHidden();
 
+  await runCommand(workbox, "Simplysm Terminal");
   const frameAgain = webviewFrame(workbox);
-  await expect(frameAgain.locator("#notice")).toContainText("No terminal session is open.", {
-    timeout: 60_000,
-  });
-  await expect(frameAgain.locator(".screen")).toHaveCount(0);
-  await expect(frameAgain.locator("#notice-action")).toContainText("Start a session");
+  await expect(frameAgain.locator(".screen .xterm-screen")).toBeVisible({ timeout: 60_000 });
+  await expect(frameAgain.locator(".tab-label")).toHaveCount(1);
 });
 
 test("세션 생성이 실패하면 그 자리에 사유가 보이고 다시 고를 수 있다", async ({
