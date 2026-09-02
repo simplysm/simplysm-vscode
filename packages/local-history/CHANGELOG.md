@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.8 - 2026-09-02
+
+- Terminal: auto-open a session when the panel reopens empty, hide panel on last close, flow control for heavy output, restart bar after service crash; Local History: reliable recording and storage
+
 ## 1.0.7 - 2026-09-02
 
 - feat(local-history): exclude generated files from history via settings and clean them from existing history
