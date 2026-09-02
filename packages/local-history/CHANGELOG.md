@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.7 - 2026-09-02
+
+- feat(local-history): exclude generated files from history via settings and clean them from existing history
+
 ## 1.0.6 - 2026-08-26
 
 - Local History: no longer fails with EMFILE when a file has thousands of snapshots
