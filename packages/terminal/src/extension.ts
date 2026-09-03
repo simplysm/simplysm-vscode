@@ -2,7 +2,14 @@ import * as vscode from "vscode";
 import { DisplaySettingsSource } from "./display-settings.ts";
 import { resolveFileLinkPath } from "./file-link.ts";
 import { setL10nBundle, t } from "./l10n.ts";
-import { confirmWarning, logFailure, setDiagnosticsChannel, warnUser } from "./notify.ts";
+import {
+  confirmWarning,
+  logFailure,
+  logInfo,
+  logWarning,
+  setDiagnosticsChannel,
+  warnUser,
+} from "./notify.ts";
 import { DaemonClient, DaemonRejectedError, pipePathForWorkspace } from "./daemon-client.ts";
 import type { DaemonLayoutTree, DaemonSession } from "./daemon-protocol.ts";
 import { toViewLayout, toViewSessions } from "./view-state.ts";
@@ -90,6 +97,12 @@ class TerminalPanel implements vscode.WebviewViewProvider {
   #serviceLost = false;
   /** 새 webview 가 열렸는데 아직 상태를 모른다 — 상태가 오면 비어 있을 때 새 자리를 연다. */
   #openTabWhenStateArrives = false;
+  /** 지금 webview 가 ready 를 보냈다. 그 전의 전달 실패는 정상이라 기록하지 않는다. */
+  #viewReady = false;
+  /** 이 webview 로의 전달 실패를 이미 기록했다 — 출력마다 되풀이하면 이정표 로그가 묻힌다. */
+  #deliveryFailureLogged = false;
+  /** 진행 중인 뷰 시작(daemon 연결·첫 자리). ready 가 겹쳐 와도 시작은 한 번이다. */
+  #viewStarting?: Promise<void>;
 
   constructor(extensionUri: vscode.Uri, storagePath: string | undefined) {
     this.#extensionUri = extensionUri;
@@ -146,6 +159,9 @@ class TerminalPanel implements vscode.WebviewViewProvider {
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.#view = view;
+    this.#viewReady = false;
+    this.#deliveryFailureLogged = false;
+    logInfo("Terminal view created.");
     // 새 webview 는 아직 받을 준비가 안 됐다. 준비를 알려 오기 전에 보낸 것은 닿지 못한다.
     for (const disposable of this.#viewDisposables) disposable.dispose();
     this.#viewDisposables = [];
@@ -170,7 +186,11 @@ class TerminalPanel implements vscode.WebviewViewProvider {
         void this.#setViewFocusContext(false);
       }),
       view.onDidDispose(() => {
-        if (this.#view === view) this.#view = undefined;
+        if (this.#view === view) {
+          this.#view = undefined;
+          this.#viewReady = false;
+          logInfo("Terminal view disposed.");
+        }
         void this.#setViewFocusContext(false);
       }),
     );
@@ -195,7 +215,21 @@ class TerminalPanel implements vscode.WebviewViewProvider {
   async #handleWebviewMessage(message: WebviewToExtension): Promise<void> {
     switch (message.type) {
       case "ready":
-        await this.#startView();
+        this.#viewReady = true;
+        logInfo("Terminal view is ready.");
+        this.#postViewBasics();
+        if (this.#viewStarting != null) {
+          // 화면이 첫 응답을 못 받아 다시 보낸 ready 다. 기본 메시지는 다시 보냈고 시작은 이어 간다.
+          logWarning("The view sent ready again while its start was still in progress.");
+          return;
+        }
+        this.#viewStarting = this.#startView().finally(() => {
+          this.#viewStarting = undefined;
+        });
+        await this.#viewStarting;
+        return;
+      case "viewError":
+        logFailure("The terminal view reported an uncaught error.", message.detail);
         return;
       case "restartService":
         await this.#restartService();
@@ -337,6 +371,9 @@ class TerminalPanel implements vscode.WebviewViewProvider {
         },
         {
           onState: (layout, sessions) => {
+            if (this.#daemonState == null) {
+              logInfo(`First daemon state received (sessions: ${sessions.length}).`);
+            }
             const becameEmpty = this.#daemonState?.layout.root != null && layout.root == null;
             this.#daemonState = { layout, sessions };
             this.#postState();
@@ -376,6 +413,9 @@ class TerminalPanel implements vscode.WebviewViewProvider {
         },
       );
       this.#daemon = daemon;
+      logInfo(
+        `Connected to the terminal daemon (restored: ${daemon.restored}, recovered tabs: ${daemon.recoveredDump?.length ?? 0}).`,
+      );
       this.#serviceLost = false;
       this.#postServiceLost();
       // 이전 daemon 의 상태는 끝났다. 새 daemon 의 첫(빈) 상태를 "마지막 자리가 닫힘"으로 읽지 않게 비운다.
@@ -391,21 +431,27 @@ class TerminalPanel implements vscode.WebviewViewProvider {
     } catch (error) {
       if (error instanceof DaemonRejectedError) {
         this.#rejected = true;
+        logInfo("Another window owns the terminal daemon for this workspace.");
       } else if (spawnIfMissing) {
         logFailure("Could not connect to the terminal daemon.", detailOf(error));
+      } else {
+        // 띄우지 않는 탐색의 빈손은 실패가 아니다 — daemon 이 없었을 뿐이다. 사실만 남긴다.
+        logInfo(`No terminal daemon was running for this workspace (${errorMessageOf(error)}).`);
       }
-      // 띄우지 않는 탐색의 빈손은 실패가 아니다 — daemon 이 없었을 뿐이다.
       return undefined;
     }
   }
 
-  /** webview 가 준비됐다. daemon 에 붙고, 복원이면 지난 화면을 되살리고, 첫 기동이면 첫 자리를 연다. */
-  async #startView(): Promise<void> {
+  /** webview 가 상태를 그리기 전에 가져야 할 값들. ready 마다 다시 보낸다 — 첫 응답을 못 받은 재전송에도. */
+  #postViewBasics(): void {
     this.#post({ type: "displaySettings", settings: this.#settings.current });
     this.#post({ type: "shellKeys", blockedKeys: computeBlockedShellKeys(this.#readSetting) });
     this.#post({ type: "texts", texts: viewTexts() });
     this.#postServiceLost();
+  }
 
+  /** webview 가 준비됐다. daemon 에 붙고, 복원이면 지난 화면을 되살리고, 첫 기동이면 첫 자리를 연다. */
+  async #startView(): Promise<void> {
     if ((vscode.workspace.workspaceFolders?.length ?? 0) === 0) {
       this.#post({ type: "notice", notice: t("Open a folder to use the terminal.") });
       return;
@@ -559,9 +605,33 @@ class TerminalPanel implements vscode.WebviewViewProvider {
     }
   }
 
+  /** webview 로 보낸다. ready 뒤의 전달 실패는 화면이 비는 원인이므로 기록한다 (ready 전의 실패는 정상). */
   #post(message: ExtensionToWebview): void {
-    void this.#view?.webview.postMessage(message);
+    const view = this.#view;
+    if (view == null) return;
+    const readyAtPost = this.#viewReady;
+    const report = (summary: string, detail?: string): void => {
+      // 보낸 시점의 그 webview 에 대한 실패만, 한 번만 기록한다.
+      if (!readyAtPost || this.#view !== view || this.#deliveryFailureLogged) return;
+      this.#deliveryFailureLogged = true;
+      logFailure(summary, detail);
+    };
+    view.webview.postMessage(message).then(
+      (delivered) => {
+        if (!delivered) report(`Message "${message.type}" was not delivered to the terminal view.`);
+      },
+      (error: unknown) => {
+        report(
+          `Message "${message.type}" could not be posted to the terminal view.`,
+          detailOf(error),
+        );
+      },
+    );
   }
+}
+
+function errorMessageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function detailOf(error: unknown): string {

@@ -16,6 +16,16 @@ export function logFailure(summary: string, detail?: string): void {
   diagnostics?.error(detail == null ? summary : `${summary} — ${detail}`);
 }
 
+/** 문제일 수 있으나 확정은 아닌 사실 — 알림 없이 출력 채널에만 남긴다. */
+export function logWarning(summary: string): void {
+  diagnostics?.warn(summary);
+}
+
+/** 시작 경로의 이정표 — 화면이 비었을 때 어디까지 왔는지 출력 채널만으로 가리기 위한 기록. */
+export function logInfo(summary: string): void {
+  diagnostics?.info(summary);
+}
+
 /** 문제는 아니지만 사용자가 인지해야 할 사실을 warn 알림으로 띄운다. 번역을 거친 값만 받는다. */
 export function warnUser(message: LocalizedText): void {
   diagnostics?.warn(message);

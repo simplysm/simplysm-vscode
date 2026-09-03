@@ -96,6 +96,8 @@ export type ExtensionToWebview =
 
 export type WebviewToExtension =
   | { readonly type: "ready" }
+  /** webview 안에서 잡히지 않은 오류가 났다. webview 콘솔은 사용자가 열지 않으면 아무도 못 보므로 호스트가 기록한다. */
+  | { readonly type: "viewError"; readonly detail: string }
   /** 죽은 터미널 서비스를 다시 시작해 달라. 확인은 확장 호스트가 받는다. */
   | { readonly type: "restartService" }
   /** 새 자리를 만든다. pane 을 실으면 그 pane 에, 없으면 포커스 pane 이나 빈 배치에 만든다. */

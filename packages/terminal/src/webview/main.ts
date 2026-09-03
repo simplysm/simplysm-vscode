@@ -52,6 +52,21 @@ serviceLostElement.append(serviceLostTextElement, serviceLostActionElement);
 rootElement.append(serviceLostElement, tabsElement, noticeElement);
 document.body.appendChild(rootElement);
 
+// 연결 대기 문구 — 문서에 미리 들어 있다. 첫 상태(또는 안내)를 받을 때까지 화면을 덮는다.
+const handshakeElement = requireHandshakeElement();
+function requireHandshakeElement(): HTMLElement {
+  const element = document.getElementById("handshake");
+  if (element == null) throw new Error("The webview document has no #handshake element.");
+  return element;
+}
+/**
+ * 확장 호스트가 이 webview 의 ready 에 응답했는가. ready 처리에서만 나오는 메시지(texts)로 판정한다 —
+ * state·output 은 daemon 사건으로도 오므로 증거가 아니다.
+ */
+let hostResponded = false;
+const handshakeRetryMs = 3000;
+const handshakeMaxRetries = 10;
+
 /** 화면에 그려 둔 자리 하나. 세션이 붙기 전에는 시작 화면만 있다. */
 interface Tab {
   readonly tabId: string;
@@ -176,6 +191,8 @@ new MutationObserver(() => {
  * 수단을 보인다 — 마지막 자리가 닫혔다고 세션을 자동으로 새로 만들지 않는다.
  */
 function renderNotice(): void {
+  // 상태든 안내든 하나라도 받았으면 연결 대기는 끝났다 — 한 번 끝나면 다시 띄우지 않는다.
+  if (synced || extensionNotice != null) handshakeElement.hidden = true;
   if (extensionNotice != null) {
     setText(noticeTextElement, extensionNotice);
     noticeActionElement.hidden = true;
@@ -497,6 +514,12 @@ function handleMessage(message: ExtensionToWebview): void {
   switch (message.type) {
     case "displaySettings":
       displayOptions.applySettings(message.settings);
+      // 상태가 설정보다 먼저 왔으면 그때 붙이지 못한 화면을 지금 붙인다.
+      for (const layoutTab of layoutTabs.values()) {
+        const tab = tabs.get(layoutTab.tabId);
+        const session = layoutTab.sessionId == null ? undefined : sessions.get(layoutTab.sessionId);
+        if (tab != null && session != null && tab.screen == null) attachScreen(tab, session);
+      }
       return;
     case "shellKeys":
       blockedShellKeys = message.blockedKeys;
@@ -510,6 +533,7 @@ function handleMessage(message: ExtensionToWebview): void {
       clipboardReads.delete(message.requestId);
       return;
     case "texts":
+      hostResponded = true;
       viewTexts = message.texts;
       layoutView.setTexts(message.texts);
       layoutView.render(layoutTree);
@@ -546,4 +570,38 @@ window.addEventListener("message", (event: MessageEvent<ExtensionToWebview>) => 
   handleMessage(event.data);
 });
 
-post({ type: "ready" });
+// 잡히지 않은 오류는 화면을 반쯤 그린 채 멈추게 한다. 사실을 호스트로 올려 출력 채널에 남긴다.
+window.addEventListener("error", (event) => {
+  const error: unknown = event.error;
+  post({
+    type: "viewError",
+    detail: error instanceof Error ? (error.stack ?? error.message) : event.message,
+  });
+});
+window.addEventListener("unhandledrejection", (event) => {
+  const reason: unknown = event.reason;
+  post({
+    type: "viewError",
+    detail: reason instanceof Error ? (reason.stack ?? reason.message) : String(reason),
+  });
+});
+
+/**
+ * 준비를 알린다. 한도 안에 호스트의 응답이 없으면 ready 가 닿지 않은 것으로 보고 다시 보낸다 —
+ * 조용한 빈 화면 대신 문구를 바꿔 사실을 드러내고 스스로 회복을 시도한다. 횟수는 상한을 둔다.
+ */
+function postReady(attempt: number): void {
+  post({ type: "ready" });
+  setTimeout(() => {
+    if (hostResponded) return;
+    // 문서에 실린 값은 확장 호스트가 문서를 만들 때 이미 번역한 것이다.
+    setText(
+      handshakeElement.querySelector("p")!,
+      (handshakeElement.dataset["retryText"] ?? "") as LocalizedText,
+    );
+    console.warn(`terminal: no response to ready from the extension host (attempt ${attempt}).`);
+    if (attempt < handshakeMaxRetries) postReady(attempt + 1);
+  }, handshakeRetryMs);
+}
+
+postReady(1);

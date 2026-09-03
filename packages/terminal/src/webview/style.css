@@ -522,8 +522,9 @@ body.vscode-light .modern-tabs .pane.focused .tab-label.active {
   background: var(--vscode-toolbar-hoverBackground, transparent);
 }
 
-/* 세션이 없는 상태의 전체 안내 (폴더 미개방, 호스트 기동 실패). */
-#notice {
+/* 세션이 없는 상태의 전체 안내 (폴더 미개방, 호스트 기동 실패) 와 첫 상태 수신 전의 연결 대기 문구. */
+#notice,
+#handshake {
   position: absolute;
   inset: 0;
   display: flex;
@@ -539,11 +540,18 @@ body.vscode-light .modern-tabs .pane.focused .tab-label.active {
   text-align: center;
 }
 
-#notice[hidden] {
+/* 문서에서 화면 뿌리보다 앞에 있으므로 위에 놓이려면 층을 올린다. */
+#handshake {
+  z-index: 5;
+}
+
+#notice[hidden],
+#handshake[hidden] {
   display: none;
 }
 
-#notice p {
+#notice p,
+#handshake p {
   margin: 0;
   max-width: 42em;
 }

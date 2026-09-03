@@ -22,6 +22,13 @@ import {
 const connectTimeoutMs = 5_000;
 const connectRetryIntervalMs = 100;
 
+/** pipe 를 쥔 daemon 이 연결은 받았는데 첫마디를 하지 않는다 — 없는 것이 아니므로 새로 띄우면 안 된다. */
+export class DaemonUnresponsiveError extends Error {
+  constructor() {
+    super("The terminal daemon accepted the connection but did not answer.");
+  }
+}
+
 /** 같은 워크스페이스의 다른 창이 이미 daemon 을 쥐고 있어 거절당했다. */
 export class DaemonRejectedError extends Error {
   constructor() {
@@ -43,7 +50,12 @@ export interface DaemonClientCallbacks {
   readonly onState: (layout: DaemonLayoutTree, sessions: readonly DaemonSession[]) => void;
   readonly onOutput: (sessionId: string, bytes: Uint8Array) => void;
   /** 지난 화면 재생 — 직렬화 당시 크기로 맞춘 뒤 그려야 한다. */
-  readonly onReplayScreen: (sessionId: string, bytes: Uint8Array, rows: number, cols: number) => void;
+  readonly onReplayScreen: (
+    sessionId: string,
+    bytes: Uint8Array,
+    rows: number,
+    cols: number,
+  ) => void;
   /** daemon 연결이 끊겼다 (스스로 닫은 것 제외). */
   readonly onDisconnected: () => void;
   readonly onOperationFailed: (context: string, detail: string) => void;
@@ -167,7 +179,8 @@ async function openSocketWithRetry(
     try {
       return await openSocket(options.pipePath);
     } catch (error) {
-      if (!spawnIfMissing) throw error;
+      // 응답 없는 daemon 은 살아서 pipe 를 쥐고 있다 — 그 위에 또 띄우면 세션을 쥔 쪽이 밀려난다.
+      if (!spawnIfMissing || error instanceof DaemonUnresponsiveError) throw error;
       if (!spawned) {
         spawnDaemon(options);
         spawned = true;
@@ -206,18 +219,25 @@ function recoverDumpAndShutdown(socket: net.Socket): Promise<readonly DumpTab[]>
   });
 }
 
-/** 연결하고 daemon 의 첫마디(hello)까지 받는다. 첫마디 전의 연결은 아직 성립이 아니다. */
+/**
+ * 연결하고 daemon 의 첫마디(hello)까지 받는다. 첫마디 전의 연결은 아직 성립이 아니다.
+ * 연결은 됐는데 hello 가 한도 안에 오지 않으면 실패로 드러낸다 — 여기서 영영 기다리면
+ * 그 뒤의 모든 시작이 같은 대기에 물려 화면이 아무 말 없이 빈 채로 남는다.
+ */
 function openSocket(pipePath: string): Promise<Handshake> {
   return new Promise((resolve, reject) => {
     const socket = net.connect(pipePath);
     const fail = (error: Error): void => {
+      clearTimeout(helloTimer);
       socket.destroy();
       reject(error);
     };
+    const helloTimer = setTimeout(() => fail(new DaemonUnresponsiveError()), connectTimeoutMs);
     socket.once("error", fail);
     const decode = createLineDecoder((raw) => {
       const message = raw as DaemonToExtension;
       if (message.type !== "hello") return;
+      clearTimeout(helloTimer);
       socket.off("data", decode);
       socket.off("error", fail);
       resolve({

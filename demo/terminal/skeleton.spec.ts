@@ -14,6 +14,8 @@ async function openTerminalPanel(workbox: Parameters<typeof webviewFrame>[0]) {
 
 test("panel tab 을 열면 세션 1개가 떠 명령 입출력이 된다", async ({ workbox }) => {
   const frame = await openTerminalPanel(workbox);
+  // 첫 상태를 받았으므로 연결 대기 문구는 내려가 있다
+  await expect(frame.locator("#handshake")).toBeHidden();
 
   // 내장 TERMINAL 과 같은 줄에 놓인다
   const panelTabNames = await workbox
