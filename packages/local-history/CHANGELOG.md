@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.9 - 2026-09-03
+
+- Local History: don't alert when a file is locked by another process
+
 ## 1.0.8 - 2026-09-02
 
 - Terminal: auto-open a session when the panel reopens empty, hide panel on last close, flow control for heavy output, restart bar after service crash; Local History: reliable recording and storage
