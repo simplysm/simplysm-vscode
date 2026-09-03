@@ -49,7 +49,7 @@ export function activate(context: vscode.ExtensionContext): void {
     canSelectMany: true, // 범위선택 → 병합 diff
   });
 
-  const scanner = new Scanner(stores, recorder, excludes, (error) => {
+  const scanner = new Scanner(stores, recorder, excludes, logger, (error) => {
     void vscode.window.showErrorMessage(
       vscode.l10n.t("Local History failed to scan: {0}", errorText(error)),
     );

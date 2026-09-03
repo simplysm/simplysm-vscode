@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { hashOf, isUnderPrefix } from "./storage.ts";
+import { isBusyError } from "./recorder.ts";
 import type { Excludes } from "./exclude.ts";
 import type { Recorder } from "./recorder.ts";
 import type { HistoryStore, IndexEntry, WorkspaceStores } from "./storage.ts";
@@ -33,6 +34,7 @@ export class Scanner {
   private readonly stores: WorkspaceStores;
   private readonly recorder: Recorder;
   private readonly excludes: Excludes;
+  private readonly logger: vscode.LogOutputChannel;
   private readonly onError: (error: unknown) => void;
   private lastScanAt = 0;
   private scanning = false;
@@ -41,11 +43,13 @@ export class Scanner {
     stores: WorkspaceStores,
     recorder: Recorder,
     excludes: Excludes,
+    logger: vscode.LogOutputChannel,
     onError: (error: unknown) => void,
   ) {
     this.stores = stores;
     this.recorder = recorder;
     this.excludes = excludes;
+    this.logger = logger;
     this.onError = onError;
   }
 
@@ -133,6 +137,11 @@ export class Scanner {
       try {
         await this.checkFile(context, uri, relPath);
       } catch (error) {
+        if (isBusyError(error)) {
+          // 다른 프로세스가 잠근 파일 — 지금은 누구도 못 읽는다. 색인을 안 건드리므로 다음 스캔이 다시 읽는다
+          this.logger.warn(`locked by another process, will retry on next scan: ${uri.fsPath}`);
+          continue;
+        }
         context.failures.push({ relPath, error });
       }
     }

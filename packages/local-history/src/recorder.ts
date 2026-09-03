@@ -76,8 +76,17 @@ export class Recorder implements vscode.Disposable {
       const hash = await resolved.store.saveBlob(read.content);
       this.enqueue(resolved.store, resolved.relPath, hash, uri, read.meta);
     } catch (error) {
-      this.reportError(error);
+      if (isBusyError(error)) {
+        this.warnBusy(uri);
+        return;
+      }
+      this.reportError(error, uri);
     }
+  }
+
+  /** 다른 프로세스가 잠근 파일 — 지금은 누구도 못 읽는다. 색인이 안 바뀌므로 다음 스캔이 다시 읽는다. */
+  private warnBusy(uri: vscode.Uri): void {
+    this.logger.warn(`locked by another process, will retry on next scan: ${uri.fsPath}`);
   }
 
   /**
@@ -116,7 +125,11 @@ export class Recorder implements vscode.Disposable {
           await this.captureFileRename(oldUri, newUri);
         }
       } catch (error) {
-        this.reportError(error);
+        if (isBusyError(error)) {
+          this.warnBusy(newUri);
+          continue;
+        }
+        this.reportError(error, newUri);
       }
     }
   }
@@ -286,9 +299,13 @@ export class Recorder implements vscode.Disposable {
     if (restored) this.schedule(RETRY_MS);
   }
 
-  /** 기록 실패 = 이력 손실 문제 — 전부 로그에 남기고, 알림은 이벤트 폭풍 중 연속 실패 대비 10초에 1회만. */
-  private reportError(error: unknown): void {
-    const message = error instanceof Error ? error.message : String(error);
+  /**
+   * 기록 실패 = 이력 손실 문제 — 전부 로그에 남기고, 알림은 이벤트 폭풍 중 연속 실패 대비 10초에 1회만.
+   * `uri` = 실패한 대상 파일 — `vscode.workspace.fs` 오류에는 경로가 없어 여기서 붙인다 (스냅샷 쓰기 실패는 대상 파일이 없음).
+   */
+  private reportError(error: unknown, uri?: vscode.Uri): void {
+    const cause = error instanceof Error ? error.message : String(error);
+    const message = uri === undefined ? cause : `${uri.fsPath}: ${cause}`;
     this.logger.error(`record failed: ${message}`);
     const now = Date.now();
     if (now - this.lastErrorAt < 10_000) return;
@@ -302,6 +319,14 @@ export class Recorder implements vscode.Disposable {
     clearTimeout(this.timer);
     for (const disposable of this.disposables) disposable.dispose();
   }
+}
+
+/**
+ * 다른 프로세스의 독점 잠금(Windows 공유 위반 = EBUSY)인지 — `vscode.workspace.fs` 는 이 오류를
+ * `Unknown` 코드로만 돌려주고 원래 코드는 메시지에만 남아 있어 메시지로 판별한다.
+ */
+export function isBusyError(error: unknown): boolean {
+  return error instanceof Error && /\bEBUSY\b/.test(error.message);
 }
 
 /**
