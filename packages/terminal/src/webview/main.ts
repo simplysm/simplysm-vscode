@@ -16,6 +16,7 @@ import { collectPanes, type LayoutTab, type LayoutTree } from "../layout/layout-
 import { DisplayOptionsSource } from "./display-options.ts";
 import { setDataText, setText } from "./dom-text.ts";
 import { LayoutView, type TabView } from "./layout-ui/layout-view.ts";
+import { keepPlainAltInView } from "./menubar-alt.ts";
 import { SearchBar } from "./output/search-bar.ts";
 import { normalizeAssignedName, shellDisplayName } from "./session-name/name-value.ts";
 import { TerminalScreen } from "./terminal-screen.ts";
@@ -505,6 +506,9 @@ document.addEventListener(
   },
   { capture: true },
 );
+
+// 뷰에서 누른 Alt 는 VS Code 메뉴 막대로 포커스를 옮기지 않는다 — 이유는 menubar-alt.ts.
+keepPlainAltInView(document);
 
 // 뷰의 키보드 포커스 — 셸 편집 키를 덮는 keybinding 의 조건 키가 이 값을 따른다.
 window.addEventListener("focus", () => post({ type: "viewFocus", focused: true }));

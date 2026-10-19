@@ -12,7 +12,7 @@ The built-in terminal only splits side-by-side within a group. This one treats t
 
 - **Grid layout by drag & drop** — drag a tab to a pane edge to split up/down or left/right, drop on the center to merge; drop targets are previewed while dragging, `Esc` cancels. Borders resize adjacent panes; ratios survive panel resizes.
 - **Sessions survive reload** — tabs, names, layout, screen contents, and the *same shell processes* are restored after a window reload. Closing the window for real ends the shells (no ghost processes). If the daemon dies or the extension was updated, sessions are shown as exited with their last screen — nothing pretends to be alive.
-- **Shell-first keys** — keys go to the shell by default (`Ctrl+R` history search works); VS Code keeps only what's in `terminal.integrated.commandsToSkipShell`. `Ctrl+F` opens in-terminal search.
+- **Shell-first keys** — keys go to the shell by default (`Ctrl+R` history search works); VS Code keeps only what's in `terminal.integrated.commandsToSkipShell`. `Ctrl+F` opens in-terminal search. `Alt` never moves focus to the VS Code menu bar, so `Alt+key` shortcuts of shell apps keep the focus here; `Ctrl+Alt` shortcuts still reach VS Code.
 - **Session names** — rename a tab in place; the name sticks even before/after the session starts, empty name falls back to the shell name.
 - **Start directory** — in a multi-root workspace, each new tab asks which folder to start in.
 - **Practical output handling** — `Ctrl+click` file paths to open them in the editor, right-click to copy/paste (copy when text is selected, paste otherwise), `Ctrl+C`/`Ctrl+V` clipboard behavior, OSC 52 support.
@@ -32,7 +32,7 @@ The built-in terminal only splits side-by-side within a group. This one treats t
 
 - **드래그 & 드롭 그리드 배치** — 탭을 창 가장자리로 드래그하면 상하/좌우로 분할되고, 중앙에 드롭하면 병합됩니다. 드래그 중에는 드롭 위치가 미리 표시되며 `Esc`로 취소합니다. 경계를 드래그하면 인접한 창의 크기가 조절되고, 비율은 패널 크기 변경 후에도 유지됩니다.
 - **다시 로드해도 세션 유지** — 창을 다시 로드하면 탭, 이름, 배치, 화면 내용, 그리고 *동일한 셸 프로세스*가 복원됩니다. 창을 실제로 닫으면 셸도 종료됩니다 (유령 프로세스 없음). 데몬이 죽었거나 확장이 업데이트된 경우에는 세션이 마지막 화면과 함께 종료 상태로 표시됩니다 — 살아있는 척하지 않습니다.
-- **셸 우선 키 입력** — 키는 기본적으로 셸로 전달됩니다 (`Ctrl+R` 히스토리 검색 동작). VS Code는 `terminal.integrated.commandsToSkipShell`에 있는 것만 가져갑니다. `Ctrl+F`는 터미널 내 검색을 엽니다.
+- **셸 우선 키 입력** — 키는 기본적으로 셸로 전달됩니다 (`Ctrl+R` 히스토리 검색 동작). VS Code는 `terminal.integrated.commandsToSkipShell`에 있는 것만 가져갑니다. `Ctrl+F`는 터미널 내 검색을 엽니다. `Alt`는 VS Code 메뉴 막대로 포커스를 옮기지 않으므로, 셸 프로그램의 `Alt+키` 단축키를 써도 포커스가 터미널에 남습니다. `Ctrl+Alt` 단축키는 그대로 VS Code에 전달됩니다.
 - **세션 이름** — 탭 이름을 그 자리에서 변경할 수 있습니다. 이름은 세션 시작 전후에도 유지되며, 비워두면 셸 이름으로 표시됩니다.
 - **시작 디렉터리** — 멀티 루트 워크스페이스에서는 새 탭마다 어느 폴더에서 시작할지 묻습니다.
 - **실용적인 출력 처리** — 파일 경로를 `Ctrl+클릭`하면 편집기에서 열리고, 우클릭으로 복사/붙여넣기(텍스트 선택 시 복사, 아니면 붙여넣기), `Ctrl+C`/`Ctrl+V` 클립보드 동작, OSC 52 지원.

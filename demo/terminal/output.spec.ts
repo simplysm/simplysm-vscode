@@ -91,6 +91,72 @@ test("파일 링크 — 출력 속 경로를 Ctrl+클릭하면 에디터로 열�
   await workbox.screenshot({ path: path.join(shotDir, "output-file-link.png") });
 });
 
+test("파일 링크 — 앞에 한글이 있어도 밑줄과 Ctrl+클릭 범위가 경로와 겹친다", async ({ workbox }) => {
+  const frame = await openTerminalPanel(workbox);
+  const screen = frame.locator(".screen .xterm-screen");
+  await screen.click();
+  await workbox.keyboard.type('"wide-link" | Out-File demo-wide-link.txt\r');
+  // 한글은 셸이 문자 코드로 만들어 출력하게 한다 — 합성 한글 입력은 조합이 어긋날 수 있다(ime.spec 참고).
+  await workbox.keyboard.type(
+    '"$([char]0xD55C)$([char]0xAE00)$([char]0xD55C)$([char]0xAE00)$([char]0xD55C)$([char]0xAE00) .\\demo-wide-link.txt"\r',
+  );
+  const linkRow = frame
+    .locator(".xterm-rows > div", { hasText: /한글한글한글.*demo-wide-link\.txt/ })
+    .last();
+  await expect(linkRow).toBeVisible({ timeout: 30_000 });
+
+  // 경로 끝 "txt" 위에 올린다. 칸 번호가 한글 수만큼 밀리면 이 자리는 링크 범위 밖이다.
+  const offsetX = await linkRow.evaluate((row) => {
+    const walker = row.ownerDocument.createTreeWalker(row, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node != null; node = walker.nextNode()) {
+      const index = node.textContent?.indexOf("txt") ?? -1;
+      if (index < 0) continue;
+      const range = row.ownerDocument.createRange();
+      range.setStart(node, index);
+      range.setEnd(node, index + 3);
+      const rect = range.getBoundingClientRect();
+      return rect.left + rect.width / 2 - row.getBoundingClientRect().left;
+    }
+    throw new Error("경로 끝 글자를 찾지 못했습니다.");
+  });
+  // DOM 렌더러는 링크에 올린 칸에만 밑줄 스타일을 넣는다.
+  const underlinedText = async () =>
+    await linkRow.evaluate((row) =>
+      [...row.querySelectorAll("span")]
+        .filter((span) => span.style.textDecoration.includes("underline"))
+        .map((span) => span.textContent)
+        .join(""),
+    );
+  await retryAction(
+    async () => {
+      // 다른 줄에서 들어와야 링크를 새로 묻는다 — 마우스가 같은 줄에 머무는 동안 에뮬레이터는
+      // 처음 받은 링크 목록을 다시 쓴다. 앞서 화면을 클릭한 자리가 출력 전의 이 줄일 수 있다.
+      const point = await pointOf(linkRow, offsetX);
+      const rowBox = await linkRow.boundingBox();
+      await workbox.mouse.move(point.x, point.y - (rowBox?.height ?? 0) * 2);
+      await workbox.mouse.move(point.x, point.y);
+    },
+    async () => {
+      await expect.poll(underlinedText, { timeout: 5_000 }).toBe(".\\demo-wide-link.txt");
+    },
+  );
+  await workbox.screenshot({ path: path.join(shotDir, "output-file-link-wide.png") });
+
+  await retryAction(
+    async () => {
+      const point = await pointOf(linkRow, offsetX);
+      await workbox.keyboard.down("Control");
+      await workbox.mouse.click(point.x, point.y);
+      await workbox.keyboard.up("Control");
+    },
+    async () => {
+      await expect(workbox.getByRole("tab", { name: /demo-wide-link\.txt/ })).toBeVisible({
+        timeout: 5_000,
+      });
+    },
+  );
+});
+
 test("복사·붙여넣기 — 우클릭은 선택이 있으면 복사, 없으면 붙여넣기다 (메뉴 없음)", async ({
   workbox,
 }) => {

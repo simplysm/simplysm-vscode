@@ -2,7 +2,10 @@
 // 거기에 없어 자체로 만든다.
 
 export interface FileLinkMatch {
-  /** 밑줄을 그을 구간 — 경로에 줄·열 표기가 붙어 있으면 그 표기까지 포함한다. */
+  /**
+   * 밑줄을 그을 구간 — 경로에 줄·열 표기가 붙어 있으면 그 표기까지 포함한다. 단위는 줄 텍스트의
+   * 위치다. 화면 칸 번호는 넓은 글자 때문에 다를 수 있어 쓰는 쪽이 바꾼다.
+   */
   readonly startIndex: number;
   readonly length: number;
   readonly path: string;

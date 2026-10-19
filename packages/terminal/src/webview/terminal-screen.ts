@@ -15,6 +15,7 @@ import type { LocalizedText } from "../l10n.ts";
 import type { DisplayOptions } from "./display-options.ts";
 import { setText } from "./dom-text.ts";
 import { detectFileLinks } from "./output/file-link-detect.ts";
+import { mapLineCells, type LineCell } from "./output/line-cells.ts";
 
 /** 출력에서 찾은 파일 링크 한 건. 상대 경로 해석은 세션 시작 디렉터리를 아는 확장 호스트 몫이다. */
 export interface FileLinkRequest {
@@ -353,29 +354,38 @@ export class TerminalScreen {
   #registerFileLinkProvider(): void {
     this.#terminal.registerLinkProvider({
       provideLinks: (bufferLineNumber, callback) => {
-        const lineText = this.#terminal.buffer.active
-          .getLine(bufferLineNumber - 1)
-          ?.translateToString(true);
-        if (lineText == null || lineText.length === 0) {
+        const bufferLine = this.#terminal.buffer.active.getLine(bufferLineNumber - 1);
+        if (bufferLine == null) {
           callback(undefined);
           return;
         }
+        // 경로는 텍스트에서 찾고, 링크 범위는 칸 번호로 준다 — 넓은 글자가 있으면 둘이 다르다.
+        const cells: LineCell[] = [];
+        for (let columnIndex = 0; columnIndex < bufferLine.length; columnIndex++) {
+          const cell = bufferLine.getCell(columnIndex);
+          if (cell == null) break;
+          cells.push({ chars: cell.getChars(), width: cell.getWidth() });
+        }
+        const line = mapLineCells(cells);
         callback(
-          detectFileLinks(lineText).map((match) => ({
-            range: {
-              start: { x: match.startIndex + 1, y: bufferLineNumber },
-              end: { x: match.startIndex + match.length, y: bufferLineNumber },
-            },
-            text: lineText.slice(match.startIndex, match.startIndex + match.length),
-            activate: (event: MouseEvent) => {
-              if (!event.ctrlKey) return;
-              this.#callbacks.onOpenFile({
-                path: match.path,
-                ...(match.line == null ? {} : { line: match.line }),
-                ...(match.column == null ? {} : { column: match.column }),
-              });
-            },
-          })),
+          detectFileLinks(line.text).map((match) => {
+            const { startColumn, endColumn } = line.columnRangeOf(match.startIndex, match.length);
+            return {
+              range: {
+                start: { x: startColumn, y: bufferLineNumber },
+                end: { x: endColumn, y: bufferLineNumber },
+              },
+              text: line.text.slice(match.startIndex, match.startIndex + match.length),
+              activate: (event: MouseEvent) => {
+                if (!event.ctrlKey) return;
+                this.#callbacks.onOpenFile({
+                  path: match.path,
+                  ...(match.line == null ? {} : { line: match.line }),
+                  ...(match.column == null ? {} : { column: match.column }),
+                });
+              },
+            };
+          }),
         );
       },
     });
