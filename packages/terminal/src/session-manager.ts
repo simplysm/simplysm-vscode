@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import * as pty from "@lydell/node-pty";
 import { Terminal } from "@xterm/headless";
 import { SerializeAddon } from "@xterm/addon-serialize";
-import type { DaemonLayoutTree, DaemonSession, DumpTab, ShellSpec } from "./daemon-protocol.ts";
+import type { DaemonLayoutTree, DaemonSession, DumpTab, ShellLaunch } from "./daemon-protocol.ts";
 import type { SessionEndCause, StartFailureCause } from "./session-causes.ts";
 import { collectPanes } from "./layout/layout-tree.ts";
 import {
@@ -72,20 +72,17 @@ export interface SessionManagerCallbacks {
 
 export class SessionManager {
   readonly #callbacks: SessionManagerCallbacks;
-  #shell: ShellSpec;
   #scrollback: number;
   readonly #sessions = new Map<string, Session>();
   #layout: DaemonLayoutTree = { root: null };
 
-  constructor(shell: ShellSpec, scrollback: number, callbacks: SessionManagerCallbacks) {
-    this.#shell = shell;
+  constructor(scrollback: number, callbacks: SessionManagerCallbacks) {
     this.#scrollback = scrollback;
     this.#callbacks = callbacks;
   }
 
-  /** 재연결·설정 변경으로 준비물이 갱신됐다. 이미 도는 세션은 그대로 두고 다음 것부터 적용한다. */
-  update(shell: ShellSpec, scrollback: number): void {
-    this.#shell = shell;
+  /** 재연결·설정 변경으로 화면 유지 깊이가 갱신됐다. 도는 세션의 화면에도 곧바로 적용한다. */
+  update(scrollback: number): void {
     this.#scrollback = scrollback;
     for (const session of this.#sessions.values()) session.screen.options.scrollback = scrollback;
   }
@@ -265,7 +262,7 @@ export class SessionManager {
   }
 
   /** 그 자리에 셸을 띄워 붙인다. 못 띄우면 자리를 남긴 채 사유를 그 자리에 적는다. */
-  startSession(tabId: string, cwd: string): void {
+  startSession(tabId: string, cwd: string, launch: ShellLaunch): void {
     this.#changeLayout((tree) => markTabStarting(tree, tabId));
 
     // 시작 디렉터리가 없으면 셸을 띄우지 않는다. 그냥 띄우면 셸이 뜬 직후 끝나
@@ -277,15 +274,19 @@ export class SessionManager {
 
     let shell: pty.IPty;
     try {
-      shell = pty.spawn(this.#shell.shellPath, [], {
-        name: terminalTypeName,
-        cwd,
-        env: { ...this.#shell.env },
-        rows: initialRows,
-        cols: initialCols,
-        encoding: null,
-        useConptyDll: true,
-      });
+      shell = pty.spawn(
+        launch.shellPath,
+        typeof launch.args === "string" ? launch.args : [...launch.args],
+        {
+          name: terminalTypeName,
+          cwd,
+          env: { ...launch.env },
+          rows: initialRows,
+          cols: initialCols,
+          encoding: null,
+          useConptyDll: true,
+        },
+      );
     } catch (error) {
       this.#failStart(tabId, { kind: "spawnFailed", detail: String(error) });
       return;
@@ -303,7 +304,7 @@ export class SessionManager {
 
     const session: Session = {
       sessionId: randomUUID(),
-      shellPath: this.#shell.shellPath,
+      shellPath: launch.shellPath,
       cwd,
       shell,
       screen,

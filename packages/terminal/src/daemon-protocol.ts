@@ -22,9 +22,14 @@ export interface DumpTab {
   readonly screenBase64: string;
 }
 
-/** 셸을 띄울 때 물려줄 값. 셸 경로와 환경은 확장 호스트만 알 수 있다. */
-export interface ShellSpec {
+/**
+ * 띄울 셸 — 경로 · 인자 · 환경 변수. 기본 터미널 프로필의 해석은 설정과 VS Code API 를 쥔 확장
+ * 호스트 몫이고, daemon 은 받은 그대로 띄운다.
+ */
+export interface ShellLaunch {
   readonly shellPath: string;
+  /** Windows 는 명령줄 문자열 하나도 받는다 — VS Code 프로필의 `args` 와 같다. */
+  readonly args: string | readonly string[];
   readonly env: Record<string, string>;
 }
 
@@ -41,10 +46,10 @@ export type DaemonLayoutTree = LayoutTree<StartFailureCause>;
 
 export type ExtensionToDaemon =
   /**
-   * 연결 직후 한 번(설정이 바뀌면 다시). 셸을 띄울 준비물과 화면 유지 깊이를 건넨다.
-   * daemon 이 이미 세션을 쥐고 있으면(재연결) 준비물만 갈아끼우고 세션은 그대로 둔다.
+   * 연결 직후 한 번(설정이 바뀌면 다시). 화면 유지 깊이를 건넨다.
+   * daemon 이 이미 세션을 쥐고 있으면(재연결) 값만 갈아끼우고 세션은 그대로 둔다.
    */
-  | { readonly type: "init"; readonly shell: ShellSpec; readonly scrollback: number }
+  | { readonly type: "init"; readonly scrollback: number }
   /**
    * 세션별 화면 내용(직렬화된 VT 시퀀스)을 output 으로 다시 보내 달라.
    * 새로 만들어진 webview 가 지난 화면을 그릴 때 쓴다.
@@ -57,7 +62,16 @@ export type ExtensionToDaemon =
   /** 구 daemon 에서 회수한 탭들을 같은 구성으로, 전부 종료 상태로 되살려라. */
   | { readonly type: "restoreDump"; readonly tabs: readonly DumpTab[] }
   | { readonly type: "newTab"; readonly paneId?: string }
-  | { readonly type: "startSession"; readonly tabId: string; readonly cwd: string }
+  /**
+   * 그 자리에 셸을 띄워라. 셸은 확장 호스트가 시작 때마다 그 순간의 설정으로 정해 싣는다 —
+   * 프로필 설정이 바뀌면 그 뒤에 시작하는 세션부터 적용되고, 떠 있는 셸은 그대로다.
+   */
+  | {
+      readonly type: "startSession";
+      readonly tabId: string;
+      readonly cwd: string;
+      readonly shell: ShellLaunch;
+    }
   | { readonly type: "closeTab"; readonly tabId: string }
   | { readonly type: "renameTab"; readonly tabId: string; readonly name?: string }
   | {

@@ -64,7 +64,7 @@ async function handleMessage(socket: net.Socket, message: ExtensionToDaemon): Pr
   // ---- 본 프로토콜 ----
   if (message.type === "init") {
     if (manager == null) {
-      manager = new SessionManager(message.shell, message.scrollback, {
+      manager = new SessionManager(message.scrollback, {
         onStateChanged: () => {
           if (client != null) sendState(client);
         },
@@ -82,8 +82,8 @@ async function handleMessage(socket: net.Socket, message: ExtensionToDaemon): Pr
         },
       });
     } else {
-      // 재연결 — 세션은 그대로 두고 준비물만 갈아끼운다.
-      manager.update(message.shell, message.scrollback);
+      // 재연결·설정 변경 — 세션은 그대로 두고 값만 갈아끼운다.
+      manager.update(message.scrollback);
     }
     sendState(socket);
     return;
@@ -111,7 +111,7 @@ async function handleMessage(socket: net.Socket, message: ExtensionToDaemon): Pr
       manager.newTab(message.paneId);
       return;
     case "startSession":
-      manager.startSession(message.tabId, message.cwd);
+      manager.startSession(message.tabId, message.cwd, message.shell);
       return;
     case "closeTab":
       manager.closeTab(message.tabId);

@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import os from "node:os";
 import * as vscode from "vscode";
 import { DisplaySettingsSource } from "./display-settings.ts";
 import { resolveFileLinkPath } from "./file-link.ts";
@@ -11,7 +13,7 @@ import {
   warnUser,
 } from "./notify.ts";
 import { DaemonClient, DaemonRejectedError, pipePathForWorkspace } from "./daemon-client.ts";
-import type { DaemonLayoutTree, DaemonSession } from "./daemon-protocol.ts";
+import type { DaemonLayoutTree, DaemonSession, ShellLaunch } from "./daemon-protocol.ts";
 import { toViewLayout, toViewSessions } from "./view-state.ts";
 import type {
   ExtensionToWebview,
@@ -24,22 +26,15 @@ import {
   resolveStartDirectoryCandidates,
   type StartDirectoryCandidate,
 } from "./start-directory.ts";
+import {
+  profileOsOf,
+  resolveShellLaunch,
+  type EditorVariables,
+  type WorkspaceFolderRef,
+} from "./shell-launch.ts";
 import { buildWebviewHtml } from "./webview-html.ts";
 
 const viewId = "simplysm-terminal.view";
-
-/** 셸이 물려받으면 VS Code CLI 와 webview 가 깨지는 변수들. 세션 환경에서 걷어 낸다. */
-function shellEnvironment(): Record<string, string> {
-  const environment: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value == null || key === "ELECTRON_RUN_AS_NODE" || /^VSCODE_/i.test(key)) continue;
-    environment[key] = value;
-  }
-  // 에뮬레이터(xterm.js)가 24bit 색을 실제로 지원한다 — 셸 프로그램의 truecolor 감지용.
-  // 내장 터미널과 같은 선언 (name=xterm-256color 만으로는 256색으로 강등된다).
-  environment["COLORTERM"] = "truecolor";
-  return environment;
-}
 
 function startDirectoryCandidates(): StartDirectoryCandidate[] {
   const folders = vscode.workspace.workspaceFolders ?? [];
@@ -55,6 +50,94 @@ function startDirectoryCandidates(): StartDirectoryCandidate[] {
       };
     }),
   );
+}
+
+/** 세션이 시작하는 폴더 — 고른 시작 후보가 온 워크스페이스 폴더, 아니면 그 경로를 품은 폴더. */
+function workspaceFolderOfStart(cwd: string): vscode.WorkspaceFolder | undefined {
+  const candidate = startDirectoryCandidates().find((entry) => entry.path === cwd);
+  const fromCandidate =
+    candidate == null
+      ? undefined
+      : vscode.workspace.workspaceFolders?.find((folder) => folder.name === candidate.folderName);
+  return fromCandidate ?? vscode.workspace.getWorkspaceFolder(vscode.Uri.file(cwd));
+}
+
+function toFolderRef(folder: vscode.WorkspaceFolder): WorkspaceFolderRef {
+  return { name: folder.name, path: folder.uri.fsPath };
+}
+
+/** 편집기에 매인 변수의 값 — 활성 텍스트 편집기 기준이다. */
+function editorVariables(): EditorVariables | undefined {
+  const editor = vscode.window.activeTextEditor;
+  if (editor == null) return undefined;
+  const { document, selection } = editor;
+  const isLocalFile = document.uri.scheme === "file" || document.uri.scheme === "vscode-userdata";
+  const fileFolder = isLocalFile ? vscode.workspace.getWorkspaceFolder(document.uri) : undefined;
+  return {
+    ...(isLocalFile ? { filePath: document.uri.fsPath } : {}),
+    ...(fileFolder == null ? {} : { fileWorkspaceFolderPath: fileFolder.uri.fsPath }),
+    lineNumber: String(selection.active.line + 1),
+    columnNumber: String(selection.active.character + 1),
+    selectedText: document.getText(selection),
+  };
+}
+
+function isFile(filePath: string): boolean {
+  try {
+    return fs.statSync(filePath, { throwIfNoEntry: false })?.isFile() ?? false;
+  } catch {
+    return false;
+  }
+}
+
+function readUnixShells(): string | undefined {
+  try {
+    return fs.readFileSync("/etc/shells", "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * 그 폴더에서 시작하는 새 세션의 셸 — VS Code 내장 터미널이 기본 프로필로 띄울 셸과 같다.
+ * 시작할 때마다 읽으므로 프로필 설정을 바꾸면 그 뒤에 시작하는 세션부터 적용된다.
+ */
+function shellLaunchFor(cwd: string): ShellLaunch {
+  const profileOs = profileOsOf(process.platform);
+  const terminalConfig = vscode.workspace.getConfiguration("terminal.integrated");
+  const folder = workspaceFolderOfStart(cwd);
+  const editor = editorVariables();
+  const launch = resolveShellLaunch({
+    os: profileOs,
+    shellPath: vscode.env.shell,
+    settings: {
+      defaultProfileName: terminalConfig.get(`defaultProfile.${profileOs}`),
+      profiles: terminalConfig.get(`profiles.${profileOs}`),
+      useWslProfiles: terminalConfig.get("useWslProfiles"),
+      env: terminalConfig.get(`env.${profileOs}`),
+    },
+    processEnv: process.env,
+    variables: {
+      ...(folder == null ? {} : { folder: toFolderRef(folder) }),
+      folders: (vscode.workspace.workspaceFolders ?? []).map(toFolderRef),
+      userHome: os.homedir(),
+      processCwd: process.cwd(),
+      execPath: process.execPath,
+      appRoot: vscode.env.appRoot,
+      ...(editor == null ? {} : { editor }),
+      readConfiguration: (section, scope) =>
+        vscode.workspace
+          .getConfiguration(undefined, scope == null ? undefined : vscode.Uri.file(scope.path))
+          .get(section),
+      extensionPath: (extensionId) => vscode.extensions.getExtension(extensionId)?.extensionPath,
+    },
+    isFile,
+    ...(profileOs === "windows" ? {} : { unixShells: readUnixShells() }),
+  });
+  logInfo(
+    `Starting a session with ${launch.shellPath} (profile: ${launch.profileName ?? "none"}).`,
+  );
+  return launch;
 }
 
 /** webview 가 스스로 띄우는 화면의 문자열. */
@@ -127,7 +210,7 @@ class TerminalPanel implements vscode.WebviewViewProvider {
         this.#settings.notifyChanged();
         // 설정이 바뀌면 넘길 키 목록도 곧바로 바뀌어야 한다. 재로드를 요구하면 안 된다.
         this.#refreshShellKeyContexts();
-        // scrollback 등 daemon 이 쥐는 값도 같은 길로 내려간다.
+        // scrollback 등 daemon 이 쥐는 값도 같은 길로 내려간다. 셸 프로필은 시작할 때마다 읽는다.
         this.#daemon?.send(this.#initMessage());
       }),
     );
@@ -141,7 +224,6 @@ class TerminalPanel implements vscode.WebviewViewProvider {
   #initMessage(): Parameters<DaemonClient["send"]>[0] {
     return {
       type: "init",
-      shell: { shellPath: vscode.env.shell, env: shellEnvironment() },
       scrollback: (this.#readSetting("terminal.integrated.scrollback") as number | undefined) ?? 1000,
     };
   }
@@ -275,7 +357,12 @@ class TerminalPanel implements vscode.WebviewViewProvider {
           await this.#restartService();
           return;
         }
-        this.#requireDaemon().send({ type: "startSession", tabId: message.tabId, cwd: message.cwd });
+        this.#requireDaemon().send({
+          type: "startSession",
+          tabId: message.tabId,
+          cwd: message.cwd,
+          shell: shellLaunchFor(message.cwd),
+        });
         return;
       case "closeTab":
         this.#requireDaemon().send({ type: "closeTab", tabId: message.tabId });
