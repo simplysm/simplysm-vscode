@@ -12,7 +12,7 @@ A monorepo of small, focused VS Code extensions by [Simplysm](https://github.com
 | --- | --- |
 | [Simplysm Terminal](https://marketplace.visualstudio.com/items?itemName=simplysm.simplysm-terminal) | A panel terminal you can split four ways — arrange sessions in a grid and drag tabs where you want them |
 | [Simplysm Tasks](https://marketplace.visualstudio.com/items?itemName=simplysm.simplysm-tasks) | A quick list editor for `.tasks` memo files — jot tasks down, delete them when done |
-| [Simplysm Local History](https://marketplace.visualstudio.com/items?itemName=simplysm.simplysm-local-history) | Records local file history and restores files or folders to a past state — like WebStorm's Local History |
+| [Simplysm Local History](https://marketplace.visualstudio.com/items?itemName=simplysm.simplysm-local-history) | Records local file history, shows each change as a before/after diff, and restores files or folders to just before a change — like WebStorm's Local History |
 | [Simplysm Focus Refresh](https://marketplace.visualstudio.com/items?itemName=simplysm.simplysm-focus-refresh) | Reloads externally changed files when the window regains focus — like WebStorm's frame activation sync |
 
 See each extension's README under [`packages/`](packages) for details.

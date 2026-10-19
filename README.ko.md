@@ -12,7 +12,7 @@
 | --- | --- |
 | [Simplysm Terminal](https://marketplace.visualstudio.com/items?itemName=simplysm.simplysm-terminal) | 4분할 가능한 패널 터미널 — 세션을 그리드로 배치하고 탭을 원하는 곳으로 드래그 |
 | [Simplysm Tasks](https://marketplace.visualstudio.com/items?itemName=simplysm.simplysm-tasks) | `.tasks` 메모 파일용 빠른 목록 편집기 — 할 일을 적고, 끝나면 지우기 |
-| [Simplysm Local History](https://marketplace.visualstudio.com/items?itemName=simplysm.simplysm-local-history) | 파일 로컬 히스토리를 기록하고 파일·폴더를 과거 상태로 복원 — WebStorm의 Local History처럼 |
+| [Simplysm Local History](https://marketplace.visualstudio.com/items?itemName=simplysm.simplysm-local-history) | 로컬 파일 이력을 기록하고, 변경마다 직전 ↔ 직후 diff를 보여 주며, 파일·폴더를 변경 직전으로 복원 — WebStorm의 Local History처럼 |
 | [Simplysm Focus Refresh](https://marketplace.visualstudio.com/items?itemName=simplysm.simplysm-focus-refresh) | 창이 포커스를 되찾을 때 외부에서 변경된 파일을 다시 로드 — WebStorm의 frame activation sync처럼 |
 
 각 확장의 자세한 내용은 [`packages/`](packages) 아래 README를 참고하세요.

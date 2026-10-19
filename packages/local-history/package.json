@@ -9,8 +9,8 @@
     "history",
     "backup",
     "restore",
-    "snapshot",
     "rollback",
+    "snapshot",
     "webstorm"
   ],
   "description": "%description%",
@@ -35,7 +35,8 @@
   "type": "module",
   "main": "./dist/extension.cjs",
   "scripts": {
-    "build": "node scripts/build.mjs"
+    "build": "node scripts/build.mjs",
+    "test": "node --test \"src/**/*.test.ts\""
   },
   "devDependencies": {
     "minimatch": "^10.1.1"
@@ -48,10 +49,25 @@
         "category": "Simplysm Local History"
       },
       {
-        "command": "simplysm-local-history.rollback",
-        "title": "%command.rollback.title%",
+        "command": "simplysm-local-history.restore",
+        "title": "%command.restore.title%",
         "category": "Simplysm Local History",
         "icon": "$(discard)"
+      },
+      {
+        "command": "simplysm-local-history.openBeforeInDefaultApp",
+        "title": "%command.openBeforeInDefaultApp.title%",
+        "category": "Simplysm Local History"
+      },
+      {
+        "command": "simplysm-local-history.openAfterInDefaultApp",
+        "title": "%command.openAfterInDefaultApp.title%",
+        "category": "Simplysm Local History"
+      },
+      {
+        "command": "simplysm-local-history.loadMore",
+        "title": "%command.loadMore.title%",
+        "category": "Simplysm Local History"
       }
     ],
     "menus": {
@@ -64,15 +80,37 @@
       ],
       "commandPalette": [
         {
-          "command": "simplysm-local-history.rollback",
+          "command": "simplysm-local-history.restore",
+          "when": "false"
+        },
+        {
+          "command": "simplysm-local-history.openBeforeInDefaultApp",
+          "when": "false"
+        },
+        {
+          "command": "simplysm-local-history.openAfterInDefaultApp",
+          "when": "false"
+        },
+        {
+          "command": "simplysm-local-history.loadMore",
           "when": "false"
         }
       ],
       "view/item/context": [
         {
-          "command": "simplysm-local-history.rollback",
-          "when": "view == simplysm-local-history.view && (viewItem == snapshot || viewItem == entry)",
+          "command": "simplysm-local-history.restore",
+          "when": "view == simplysm-local-history.view && viewItem =~ /^(row|folder|file)(\\.|$)/ && !simplysm-local-history.restoring",
           "group": "inline"
+        },
+        {
+          "command": "simplysm-local-history.openBeforeInDefaultApp",
+          "when": "view == simplysm-local-history.view && viewItem =~ /^(row|file)\\.before/ && !remoteName",
+          "group": "1_open@1"
+        },
+        {
+          "command": "simplysm-local-history.openAfterInDefaultApp",
+          "when": "view == simplysm-local-history.view && viewItem =~ /^(row|file)(\\.before)?\\.after$/ && !remoteName",
+          "group": "1_open@2"
         }
       ]
     },
@@ -107,7 +145,8 @@
     }
   },
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onFileSystem:simplysm-local-history"
   ],
   "engines": {
     "vscode": "^1.127.0"

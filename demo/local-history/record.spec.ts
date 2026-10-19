@@ -34,6 +34,18 @@ test("파일 수정 2회가 시점 2개로 기록되고 Show History 로 목록�
     await showHistoryViaContextMenu(workbox, treeItem, fileName);
     await expect(historyPane.getByRole("treeitem")).toHaveCount(baseline + 2, { timeout: 15_000 });
 
+    // 줄 라벨 — 시각은 초까지, 맨 위 줄에만 날짜(같은 날의 아래 줄은 시각만), 파일 이력은 요약 없음
+    const year = String(new Date().getFullYear());
+    const labels = historyPane.locator(".monaco-list-row .label-name");
+    await expect(labels.nth(0)).toContainText(year);
+    await expect(labels.nth(0)).toHaveText(/\d:\d{2}:\d{2}/);
+    await expect(labels.nth(1)).not.toContainText(year);
+    await expect(labels.nth(1)).toHaveText(/\d:\d{2}:\d{2}/);
+    // 시각은 VS Code 표시 언어(영어) 형식 — OS 지역 설정을 따르지 않는다
+    await expect(labels.nth(0)).toHaveText(/\d:\d{2}:\d{2}\s?(AM|PM)$/);
+    await expect(labels.nth(0)).not.toContainText(/오전|오후/);
+    await expect(historyPane.locator(".monaco-list-row .label-description")).toHaveCount(0);
+
     await workbox.screenshot({ path: path.join(shotDir, "record-list.png") });
   } finally {
     fs.rmSync(filePath, { force: true });

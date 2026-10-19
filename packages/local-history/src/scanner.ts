@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
-import { hashOf, isUnderPrefix } from "./storage.ts";
+import { hashOf } from "./storage.ts";
+import { isUnderPrefix } from "./rel-path.ts";
 import { isBusyError } from "./recorder.ts";
 import type { Excludes } from "./exclude.ts";
 import type { Recorder } from "./recorder.ts";
@@ -28,7 +29,7 @@ interface ScanContext {
 /**
  * 스캔 안전망 (spec 프로세스 1) — 트리 순회 + mtime/size 비교로 이벤트 유실·미기동 기간의
  * 변경을 잡는다. 발견분은 Recorder 의 debounce 큐로 흘려 이벤트 기록과 같은 경로를 탄다.
- * 트리거: 기동 / 창 재포커스 / 열람·롤백 직전. 주기 타이머 없음 (spec 확정).
+ * 트리거: 기동 / 창 재포커스 / 열람·복원 직전. 주기 타이머 없음 (spec 확정).
  */
 export class Scanner {
   private readonly stores: WorkspaceStores;
@@ -37,7 +38,8 @@ export class Scanner {
   private readonly logger: vscode.LogOutputChannel;
   private readonly onError: (error: unknown) => void;
   private lastScanAt = 0;
-  private scanning = false;
+  /** 진행 중인 스캔 — 연이어 부른 쪽도 이것을 기다릴 수 있다. */
+  private running: Promise<void> | undefined;
 
   constructor(
     stores: WorkspaceStores,
@@ -53,21 +55,28 @@ export class Scanner {
     this.onError = onError;
   }
 
-  async scan(): Promise<void> {
-    if (this.scanning || Date.now() - this.lastScanAt < THROTTLE_MS) return;
-    this.scanning = true;
+  /**
+   * 스캔한다. 진행 중이면 그 스캔을, throttle 안이면 곧바로 끝난 Promise 를 돌려준다.
+   * 기다리면 스캔이 찾은 변경이 기록기 대기열에 다 들어간 뒤다. 실패는 onError 로 알리고 던지지 않는다.
+   */
+  scan(): Promise<void> {
+    if (this.running !== undefined) return this.running;
+    if (Date.now() - this.lastScanAt < THROTTLE_MS) return Promise.resolve();
     this.lastScanAt = Date.now();
-    try {
-      for (const folder of vscode.workspace.workspaceFolders ?? []) {
-        // 폴더 단위 격리 — 한 폴더의 저장소 장애가 다른 폴더의 스캔을 막지 않게
-        try {
-          await this.scanFolder(folder);
-        } catch (error) {
-          this.onError(error);
-        }
+    this.running = this.scanAll().finally(() => {
+      this.running = undefined;
+    });
+    return this.running;
+  }
+
+  private async scanAll(): Promise<void> {
+    for (const folder of vscode.workspace.workspaceFolders ?? []) {
+      // 폴더 단위 격리 — 한 폴더의 저장소 장애가 다른 폴더의 스캔을 막지 않게
+      try {
+        await this.scanFolder(folder);
+      } catch (error) {
+        this.onError(error);
       }
-    } finally {
-      this.scanning = false;
     }
   }
 

@@ -99,9 +99,8 @@ export class Recorder implements vscode.Disposable {
     uri: vscode.Uri,
   ): Promise<void> {
     // 지금 쓰는 중인 배치가 이 경로를 담고 있으면 그것이 최신 상태 (currentState 는 쓰기 완료 후에야 갱신)
-    const inFlightEntry = this.inFlight?.get(store)?.get(relPath);
-    const recordedHash =
-      inFlightEntry !== undefined ? inFlightEntry.hash : (await store.currentState()).get(relPath);
+    const state = await store.currentState();
+    const recordedHash = this.inFlightOr(store, relPath, state);
     if (typeof recordedHash === "string") {
       this.queue(store, relPath, null, uri);
       return;
@@ -110,6 +109,54 @@ export class Recorder implements vscode.Disposable {
     if (entries?.get(relPath)?.hash != null) {
       entries.delete(relPath);
       if (entries.size === 0) this.pending.delete(store);
+    }
+    await this.captureFolderDeletion(store, relPath, uri, state);
+  }
+
+  /** 기록된 상태 — 지금 쓰는 중인 배치가 이 경로를 담고 있으면 그것, 아니면 `state`. */
+  private inFlightOr(
+    store: HistoryStore,
+    relPath: string,
+    state: ReadonlyMap<string, string | null>,
+  ): string | null | undefined {
+    const inFlightEntry = this.inFlight?.get(store)?.get(relPath);
+    return inFlightEntry !== undefined ? inFlightEntry.hash : state.get(relPath);
+  }
+
+  /**
+   * 지워진 경로가 폴더였으면 그 아래 기록된 파일을 모두 지운 것으로 남긴다.
+   * VS Code watcher 는 폴더를 지우면 그 아래 파일의 삭제를 폴더 하나의 삭제로 합쳐 알린다. 그대로 두면 파일 삭제가
+   * 다음 스캔까지 기록되지 않는다(예: 탐색기에서 폴더 삭제, 복원이 파일을 지우고 비게 된 폴더를 지움).
+   * 그 경로에 다시 뭔가 있으면 건너뛴다 — 그 아래 변경은 따로 이벤트로 온다. 제외 대상은 스캔과 같게 기록하지 않는다.
+   */
+  private async captureFolderDeletion(
+    store: HistoryStore,
+    relPath: string,
+    uri: vscode.Uri,
+    state: ReadonlyMap<string, string | null>,
+  ): Promise<void> {
+    const prefix = `${relPath}/`;
+    const under = (entryPath: string) => relPath !== "" && entryPath.startsWith(prefix);
+    const inFlightPaths = [...(this.inFlight?.get(store)?.keys() ?? [])];
+    const recorded = new Set(
+      [...state.keys(), ...inFlightPaths].filter(
+        (entryPath) =>
+          under(entryPath) && typeof this.inFlightOr(store, entryPath, state) === "string",
+      ),
+    );
+    const createdInWindow = [...(this.pending.get(store) ?? [])]
+      .filter(([entryPath, entry]) => under(entryPath) && entry.hash !== null)
+      .map(([entryPath]) => entryPath)
+      .filter((entryPath) => !recorded.has(entryPath));
+    if (recorded.size === 0 && createdInWindow.length === 0) return;
+    if (await pathExists(uri)) return;
+    const entries = this.pending.get(store);
+    for (const entryPath of createdInWindow) entries?.delete(entryPath); // 이 창에서 생겼다 사라짐
+    if (entries?.size === 0) this.pending.delete(store);
+    for (const entryPath of recorded) {
+      const childUri = vscode.Uri.joinPath(uri, entryPath.slice(prefix.length));
+      if (this.excludes.isExcluded(childUri, entryPath)) continue; // 제외 규칙 변경 전 기록 — prune 이 소급 정리
+      this.queue(store, entryPath, null, childUri);
     }
   }
 
@@ -164,7 +211,29 @@ export class Recorder implements vscode.Disposable {
     }
   }
 
-  /** 외부 발견 변경(스캔 안전망 포함) 반영 — 세션 dedup 후 debounce 큐에 넣는다. */
+  /**
+   * 확장이 만든 이름 변경을 잇는다 — 복원이 이름 변경 · 이동을 되돌릴 때 (spec 「4. 복원」).
+   * workspace.fs 로 쓰고 지운 변경에는 VS Code rename 이벤트(onDidRenameFiles)가 없어 watcher 에 생성 + 삭제로만 보인다.
+   * 그러면 기록에서 이름 변경이 항목 둘로 갈리고, 그중 하나만 복원하면 파일이 두 곳에 생기거나 사라진다(spec 「3. 열람」).
+   * 그래서 rename 이벤트를 받았을 때처럼 새 경로 항목에 renamedFrom 을 얹고, 옛 경로의 상태도 같은 창에 넣는다.
+   * 같은 쓰기의 watcher 이벤트는 같은 내용이라 이 항목에 합쳐진다. 두 경로를 디스크에 쓴 뒤에 부른다 — 쓰지 못한 상태를
+   * 기록하지 않게. `from` = 내용이 떠난 경로(해시 null = 지움), `to` = 내용이 온 경로.
+   */
+  linkRename(
+    store: HistoryStore,
+    from: { readonly path: string; readonly hash: string | null; readonly uri: vscode.Uri },
+    to: { readonly path: string; readonly hash: string; readonly uri: vscode.Uri },
+  ): void {
+    this.queue(store, from.path, from.hash, from.uri);
+    this.queue(store, to.path, to.hash, to.uri, { renamedFrom: from.path });
+  }
+
+  /**
+   * 외부 발견 변경(스캔 안전망 포함) 반영 — 세션 dedup 후 debounce 큐에 넣는다.
+   * 비교 기준은 그 경로의 가장 늦은 상태다: 대기 중 → 쓰는 중 → 기록됨 순. 기록된 값부터 보면, 같은 창에서
+   * 바뀌었다가(대기 중) 기록된 내용으로 돌아온 이벤트가 버려져 디스크와 다른 상태가 기록된다
+   * (예: 복원이 쓰고 실패해 되돌림, 지웠다가 같은 내용으로 다시 만듦).
+   */
   enqueue(
     store: HistoryStore,
     relPath: string,
@@ -172,10 +241,42 @@ export class Recorder implements vscode.Disposable {
     uri: vscode.Uri,
     meta?: FileMeta,
   ): void {
-    if (hash !== null && this.lastHashes.get(store)?.get(relPath) === hash) return;
-    if (hash !== null && this.inFlight?.get(store)?.get(relPath)?.hash === hash) return; // 지금 쓰는 중
-    if (this.pending.get(store)?.get(relPath)?.hash === hash) return; // 같은 창 안 중복 — 타이머만 늘린다
+    const entries = this.pending.get(store);
+    const queued = entries?.get(relPath);
+    if (queued === undefined) {
+      if (hash !== null && this.recordedHashOf(store, relPath) === hash) return; // 이미 기록됨 · 쓰는 중
+      this.queue(store, relPath, hash, uri, { meta });
+      return;
+    }
+    if (queued.hash === hash) return; // 같은 창 안 중복
+    if (
+      hash !== null &&
+      queued.renamedFrom === undefined &&
+      this.recordedHashOf(store, relPath) === hash
+    ) {
+      // 이 창 안에서 바뀌었다가 마지막 기록으로 돌아왔다 — 기록할 변경이 없다
+      entries?.delete(relPath);
+      if (entries?.size === 0) this.pending.delete(store);
+      return;
+    }
     this.queue(store, relPath, hash, uri, { meta });
+  }
+
+  /** 이 세션이 아는 마지막 기록 상태 — 쓰는 중인 배치가 있으면 그것(곧 기록된다). 모르면 undefined. */
+  private recordedHashOf(store: HistoryStore, relPath: string): string | null | undefined {
+    const inFlight = this.inFlight?.get(store)?.get(relPath);
+    return inFlight !== undefined ? inFlight.hash : this.lastHashes.get(store)?.get(relPath);
+  }
+
+  /** 세션 dedup 기준 갱신 — 그 경로의 마지막 기록이 `hash`(null = 삭제)다. */
+  private rememberRecorded(store: HistoryStore, relPath: string, hash: string | null): void {
+    let hashes = this.lastHashes.get(store);
+    if (hashes === undefined) {
+      hashes = new Map();
+      this.lastHashes.set(store, hashes);
+    }
+    if (hash === null) hashes.delete(relPath);
+    else hashes.set(relPath, hash);
   }
 
   private queue(
@@ -217,10 +318,58 @@ export class Recorder implements vscode.Disposable {
       this.schedule(DEBOUNCE_MS);
       return this.flushPromise;
     }
-    this.flushPromise = this.doFlush().finally(() => {
-      this.flushPromise = undefined;
-    });
-    return this.flushPromise;
+    return this.startFlush().then(() => undefined);
+  }
+
+  /** flush 를 시작한다 — 진행 중인 flush 가 없을 때만 부른다. 반환 = `strictStore` 의 스냅샷 쓰기 실패(없으면 undefined). */
+  private startFlush(strictStore?: HistoryStore): Promise<unknown> {
+    const run = this.doFlush(strictStore);
+    this.flushPromise = run
+      .then(() => undefined)
+      .finally(() => {
+        this.flushPromise = undefined;
+      });
+    return run;
+  }
+
+  /**
+   * 지금 상태를 곧바로 기록한다 — 복원 직전 기록 (spec 「4. 복원」 안전장치).
+   * `states` 를 대기 중 변경과 함께 스냅샷 하나로 쓴다. 대기 중이 아닌 경로는 마지막 기록과 같으면 뺀다.
+   * 이 store 의 스냅샷을 쓰지 못하면 던진다 — 기록 없이 복원하면 덮어쓴 내용을 되찾을 수 없다.
+   * 이 기록도 세션 dedup 기준이 된다. 그래서 뒤늦게 온 같은 내용의 이벤트(먼저 저장한 미저장 편집 등)가 줄을 또 만들지 않는다.
+   */
+  async recordNow(
+    store: HistoryStore,
+    states: readonly {
+      readonly path: string;
+      readonly hash: string | null;
+      readonly uri: vscode.Uri;
+    }[],
+  ): Promise<void> {
+    clearTimeout(this.timer);
+    // 진행 중인 기록이 먼저다(시각 순서). 마지막 기록은 그 뒤에 읽는다 — 읽는 사이 시작된 flush 도 기다린다
+    let recorded: ReadonlyMap<string, string | null>;
+    do {
+      while (this.flushPromise !== undefined) await this.flushPromise;
+      recorded = await store.currentState();
+    } while (this.flushPromise !== undefined);
+    // 여기부터 await 없이 대기열에 넣고 flush 를 시작한다 — 그 사이 다른 flush 가 끼지 않는다
+    const pending = this.pending.get(store);
+    for (const state of states) {
+      // 대기 중인 경로는 늘 덮는다 — 대기 중인 값이 지금 상태보다 낡았을 수 있다
+      if (pending?.has(state.path) !== true && (recorded.get(state.path) ?? null) === state.hash) {
+        continue;
+      }
+      this.queue(store, state.path, state.hash, state.uri);
+    }
+    clearTimeout(this.timer);
+    if (this.pending.size > 0) {
+      const failure = await this.startFlush(store);
+      if (failure !== undefined) throw failure;
+    }
+    // 대상 경로의 마지막 기록 = states(방금 썼거나 이미 같았다). 이 세션에서 기록한 적 없는 경로도 기준을 두어,
+    // 이어지는 복원 쓰기가 실패해 되돌리면 그 창의 변경이 없던 것이 되게 한다(enqueue)
+    for (const state of states) this.rememberRecorded(store, state.path, state.hash);
   }
 
   /** 대기 중 변경을 지금 기록 — deactivate 용. 진행 중인 flush 를 기다린 뒤 남은 것을 마저 쓴다. */
@@ -231,20 +380,28 @@ export class Recorder implements vscode.Disposable {
     if (this.pending.size > 0) await this.flush();
   }
 
-  private async doFlush(): Promise<void> {
+  private async doFlush(strictStore?: HistoryStore): Promise<unknown> {
     const batches = this.pending;
     this.pending = new Map();
     this.inFlight = batches;
     try {
-      await this.writeBatches(batches);
+      return await this.writeBatches(batches, strictStore);
     } finally {
       this.inFlight = undefined;
     }
   }
 
-  private async writeBatches(batches: Map<HistoryStore, Map<string, PendingEntry>>): Promise<void> {
+  /**
+   * 배치마다 스냅샷 하나를 쓴다. 실패한 배치는 큐로 되돌려 재시도한다.
+   * `strictStore` 의 스냅샷 쓰기 실패는 알리지 않고 돌려준다 — 부른 쪽(복원)이 오류로 알린다.
+   */
+  private async writeBatches(
+    batches: Map<HistoryStore, Map<string, PendingEntry>>,
+    strictStore: HistoryStore | undefined,
+  ): Promise<unknown> {
     let recorded = false;
     let restored = false;
+    let strictFailure: unknown;
     const failures: unknown[] = [];
     for (const [store, entries] of batches) {
       if (entries.size === 0) continue; // 창 안에서 생성→삭제로 비워진 배치 — 빈 스냅샷을 만들지 않는다
@@ -265,24 +422,19 @@ export class Recorder implements vscode.Disposable {
           if (!current.has(entryPath)) current.set(entryPath, pendingEntry);
         }
         restored = true;
-        failures.push(error);
+        if (store === strictStore) strictFailure = error;
+        else failures.push(error);
         continue;
       }
       recorded = true;
       // 스냅샷이 디스크에 남은 뒤에만 세션 dedup 기준 갱신 — 실패한 창의 변경이 "이미 기록됨" 으로 오인되지 않게
-      let hashes = this.lastHashes.get(store);
-      if (hashes === undefined) {
-        hashes = new Map();
-        this.lastHashes.set(store, hashes);
-      }
       const updates = new Map<string, IndexEntry | null>();
       for (const [entryPath, pendingEntry] of entries) {
+        this.rememberRecorded(store, entryPath, pendingEntry.hash);
         if (pendingEntry.hash === null) {
-          hashes.delete(entryPath);
           updates.set(entryPath, null);
           continue;
         }
-        hashes.set(entryPath, pendingEntry.hash);
         // meta = 읽기 직전 stat — 이후 파일이 또 바뀌었다면 색인이 "옛 mtime/size ↔ 옛 hash" 라 다음 스캔이 재검사한다
         if (pendingEntry.meta !== undefined) {
           updates.set(entryPath, { ...pendingEntry.meta, hash: pendingEntry.hash });
@@ -297,6 +449,7 @@ export class Recorder implements vscode.Disposable {
     if (recorded) this.onDidRecordEmitter.fire();
     for (const failure of failures) this.reportError(failure);
     if (restored) this.schedule(RETRY_MS);
+    return strictFailure;
   }
 
   /**
@@ -327,6 +480,17 @@ export class Recorder implements vscode.Disposable {
  */
 export function isBusyError(error: unknown): boolean {
   return error instanceof Error && /\bEBUSY\b/.test(error.message);
+}
+
+/** 그 경로에 뭔가 있는가 — 없음 밖의 stat 실패는 던진다. */
+async function pathExists(uri: vscode.Uri): Promise<boolean> {
+  try {
+    await vscode.workspace.fs.stat(uri);
+    return true;
+  } catch (error) {
+    if (error instanceof vscode.FileSystemError && error.code === "FileNotFound") return false;
+    throw error;
+  }
 }
 
 /**

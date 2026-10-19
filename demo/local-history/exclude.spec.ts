@@ -8,7 +8,7 @@ import { countSnapshots, prepareRecording } from "./history-utils.ts";
 const fileName = "local-history-exclude-target.txt";
 const excludedDirName = "local-history-exclude-gen";
 
-/** 모든 스냅샷 매니페스트 본문 — 제외 경로가 기록됐는지 전수 확인용. */
+/** 모든 스냅샷 로그 본문 — 제외 경로가 기록됐는지 전수 확인용. */
 function readManifests(userDataDir: string): string[] {
   const storageRoot = path.join(
     userDataDir,
@@ -19,13 +19,8 @@ function readManifests(userDataDir: string): string[] {
   if (!fs.existsSync(storageRoot)) return [];
   const texts: string[] = [];
   for (const workspaceId of fs.readdirSync(storageRoot)) {
-    const snapshotsDir = path.join(storageRoot, workspaceId, "snapshots");
-    if (!fs.existsSync(snapshotsDir)) continue;
-    for (const name of fs.readdirSync(snapshotsDir)) {
-      if (name.endsWith(".json")) {
-        texts.push(fs.readFileSync(path.join(snapshotsDir, name), "utf8"));
-      }
-    }
+    const logPath = path.join(storageRoot, workspaceId, "snapshots.jsonl");
+    if (fs.existsSync(logPath)) texts.push(fs.readFileSync(logPath, "utf8"));
   }
   return texts;
 }
@@ -73,13 +68,13 @@ test("제외 설정 경로는 기록되지 않고 기존 오염 entry 는 재기
     const storeDir = path.join(storageRoot, workspaceId);
     const plantedHash = "00e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2";
     const plantedAt = Date.now() - 60 * 60 * 1000; // 보존 기한 안 — 제외 정리만으로 지워져야 함
-    const plantedSnapshotPath = path.join(storeDir, "snapshots", `${plantedAt}.json`);
-    fs.writeFileSync(
-      plantedSnapshotPath,
-      JSON.stringify({
+    const logPath = path.join(storeDir, "snapshots.jsonl");
+    fs.appendFileSync(
+      logPath,
+      `${JSON.stringify({
         at: plantedAt,
         entries: [{ path: `${excludedDirName}/polluted.txt`, hash: plantedHash }],
-      }),
+      })}\n`,
     );
     const plantedBlobPath = path.join(
       storeDir,
@@ -101,7 +96,9 @@ test("제외 설정 경로는 기록되지 않고 기존 오염 entry 는 재기
     // 2차 기동 — 기동 prune 이 제외 entry 스냅샷과 미참조 blob 을 소급 정리
     const secondApp = await launchVsCode(vscodeExePath, dirs, { settings });
     try {
-      await expect.poll(() => fs.existsSync(plantedSnapshotPath), { timeout: 60_000 }).toBe(false);
+      await expect
+        .poll(() => fs.readFileSync(logPath, "utf8"), { timeout: 60_000 })
+        .not.toContain(plantedHash);
       await expect.poll(() => fs.existsSync(plantedBlobPath), { timeout: 15_000 }).toBe(false);
       // 제외 아닌 기존 이력은 살아남는다 (심은 것만 제거 — 재기동 중 새 기록이 있을 수 있어 하한으로 단언)
       expect(countSnapshots(dirs.userDataDir)).toBeGreaterThanOrEqual(beforeRestart - 1);
