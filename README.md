@@ -4,7 +4,9 @@
 
 [English](README.md) | [한국어](README.ko.md)
 
-A monorepo of small, focused VS Code extensions by [Simplysm](https://github.com/simplysm).
+Small, focused VS Code extensions by [Simplysm](https://github.com/simplysm).
+
+> This repository is for distribution and feedback only. The source code is not public. Install the extensions from the VS Code Marketplace.
 
 ## Extensions
 
@@ -15,19 +17,7 @@ A monorepo of small, focused VS Code extensions by [Simplysm](https://github.com
 | [Simplysm Local History](https://marketplace.visualstudio.com/items?itemName=simplysm.simplysm-local-history) | Records local file history, shows each change as a before/after diff, and restores files or folders to just before a change — like WebStorm's Local History |
 | [Simplysm Focus Refresh](https://marketplace.visualstudio.com/items?itemName=simplysm.simplysm-focus-refresh) | Reloads externally changed files when the window regains focus — like WebStorm's frame activation sync |
 
-See each extension's README under [`packages/`](packages) for details.
-
-## Development
-
-```sh
-pnpm install
-pnpm build      # build all packages
-pnpm typecheck
-pnpm lint
-pnpm test
-```
-
-Press `F5` in VS Code to launch an Extension Development Host with all extensions loaded.
+See each extension's Marketplace page for details.
 
 ## Feedback
 

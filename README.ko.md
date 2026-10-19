@@ -4,7 +4,9 @@
 
 [English](README.md) | [한국어](README.ko.md)
 
-[Simplysm](https://github.com/simplysm)의 작고 목적이 분명한 VS Code 확장 모노레포입니다.
+[Simplysm](https://github.com/simplysm)의 작고 목적이 분명한 VS Code 확장입니다.
+
+> 이 저장소는 **배포와 피드백 전용**입니다. 소스는 공개하지 않습니다. 확장은 VS Code 마켓플레이스에서 설치하세요.
 
 ## 확장 목록
 
@@ -15,19 +17,7 @@
 | [Simplysm Local History](https://marketplace.visualstudio.com/items?itemName=simplysm.simplysm-local-history) | 로컬 파일 이력을 기록하고, 변경마다 직전 ↔ 직후 diff를 보여 주며, 파일·폴더를 변경 직전으로 복원 — WebStorm의 Local History처럼 |
 | [Simplysm Focus Refresh](https://marketplace.visualstudio.com/items?itemName=simplysm.simplysm-focus-refresh) | 창이 포커스를 되찾을 때 외부에서 변경된 파일을 다시 로드 — WebStorm의 frame activation sync처럼 |
 
-각 확장의 자세한 내용은 [`packages/`](packages) 아래 README를 참고하세요.
-
-## 개발
-
-```sh
-pnpm install
-pnpm build      # 전체 패키지 빌드
-pnpm typecheck
-pnpm lint
-pnpm test
-```
-
-VS Code에서 `F5`를 누르면 모든 확장이 로드된 Extension Development Host가 실행됩니다.
+각 확장의 자세한 내용은 마켓플레이스 페이지를 참고하세요.
 
 ## 피드백
 
