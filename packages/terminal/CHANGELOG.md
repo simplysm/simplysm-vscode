@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.0 - 2026-10-19
+
+- Keep focus in the terminal when pressing Alt, and align file links that follow wide characters such as Korean
+- Start shells with the default terminal profile's arguments and environment, like the built-in terminal
+
 ## 1.0.9 - 2026-09-03
 
 - Terminal: show a connecting placeholder instead of a blank panel, log startup milestones and delivery failures, fail fast on an unresponsive daemon

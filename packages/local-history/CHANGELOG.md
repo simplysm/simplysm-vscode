@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0 - 2026-10-19
+
+- Show each history entry as a before/after diff, restore only the files you pick to just before that change, open past versions in the default app, and display binary files and images correctly
+
 ## 1.0.9 - 2026-09-03
 
 - Local History: don't alert when a file is locked by another process
