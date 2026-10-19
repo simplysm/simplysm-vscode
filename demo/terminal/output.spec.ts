@@ -24,6 +24,15 @@ async function pointOf(
   return { x: box.x + offsetX, y: box.y + box.height / 2 };
 }
 
+/**
+ * `echo <token>` 의 출력 줄 — 줄 전체가 토큰인 줄이다. 토큰이 든 줄로 찾으면 출력보다 먼저 그려지는
+ * 명령 에코 줄(`PS ...> echo <token>`)에 걸려, 그 줄에서 잡은 자리를 더블클릭하면 프롬프트 경로가 선택된다.
+ * 뒤에 찍히는 Get-Clipboard 의 출력 줄도 줄 전체가 토큰이라 첫 줄을 쓴다.
+ */
+function outputLineOf(frame: ReturnType<typeof webviewFrame>, token: string) {
+  return frame.locator(".xterm-rows > div", { hasText: new RegExp(`^\\s*${token}\\s*$`) }).first();
+}
+
 test("검색 — Ctrl+F 로 열고, 결과 수·이동·비움·0건이 갈린다", async ({ workbox }) => {
   const frame = await openTerminalPanel(workbox);
   const screen = frame.locator(".screen .xterm-screen");
@@ -89,7 +98,7 @@ test("복사·붙여넣기 — 우클릭은 선택이 있으면 복사, 없으�
   const screen = frame.locator(".screen .xterm-screen");
   await screen.click();
   await workbox.keyboard.type("echo unique-copy-token\r");
-  const outputRow = frame.locator(".xterm-rows > div", { hasText: "unique-copy-token" }).last();
+  const outputRow = outputLineOf(frame, "unique-copy-token");
   await expect(outputRow).toBeVisible({ timeout: 30_000 });
 
   // 더블클릭 단어 선택 → 우클릭이 곧 복사다. 메뉴는 뜨지 않는다.
@@ -121,10 +130,14 @@ test("OSC 52 — 셸 프로그램의 이스케이프 시퀀스로 클립보드�
   const screen = frame.locator(".screen .xterm-screen");
   await screen.click();
   // OSC 52 쓰기: ESC]52;c;<base64>BEL 을 출력하면 에뮬레이터가 클립보드에 담는다.
+  // 클립보드에는 시퀀스가 에뮬레이터(webview)까지 갔다 확장 호스트를 거쳐 늦게 닿는다. Get-Clipboard 를 미리
+  // 쳐 두면 셸이 그보다 먼저 읽는다. 시퀀스 뒤에 찍는 표식이 화면에 뜨면(에뮬레이터가 시퀀스를 처리한 뒤) 읽는다.
+  // 표식을 두 조각으로 잇는 것은 명령 에코가 표식과 맞지 않게 하려는 것이다.
   await workbox.keyboard.type(
     "$b=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('osc52-copied-token')); " +
-      'Write-Host -NoNewline "`e]52;c;$b`a"\r',
+      "Write-Host -NoNewline \"`e]52;c;$b`a\"; 'osc52-' + 'written'\r",
   );
+  await expect(frame.locator(".xterm-rows")).toContainText("osc52-written", { timeout: 30_000 });
   await workbox.keyboard.type("Get-Clipboard\r");
   await expect(frame.locator(".xterm-rows")).toContainText(/Get-Clipboard[\s\S]*osc52-copied/, {
     timeout: 30_000,
@@ -138,7 +151,7 @@ test("복사·붙여넣기 — 선택 중 Ctrl+C 는 복사, Ctrl+V 는 붙여�
   const screen = frame.locator(".screen .xterm-screen");
   await screen.click();
   await workbox.keyboard.type("echo unique-key-token\r");
-  const outputRow = frame.locator(".xterm-rows > div", { hasText: "unique-key-token" }).last();
+  const outputRow = outputLineOf(frame, "unique-key-token");
   await expect(outputRow).toBeVisible({ timeout: 30_000 });
 
   // 더블클릭 단어 선택 → Ctrl+C 복사 (셸로 SIGINT 가 가지 않고 클립보드에 담긴다).
